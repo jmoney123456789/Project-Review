@@ -1340,45 +1340,40 @@ async function confirmDeleteProject() {
     if (!projectToDelete) return;
 
     const projectName = projectToDelete;
-    const now = new Date().toISOString();
 
-    // Soft delete: mark projects with _deletedAt timestamp instead of removing
-    allProjects = allProjects.map(p => {
-        if (p.projectName === projectName) {
-            return {
-                ...p,
-                _deletedAt: now,
-                _lastModified: now,
-                _version: (p._version || 0) + 1
-            };
-        }
-        return p;
-    });
+    // HARD DELETE: Completely remove project and all associated data
+    // This is permanent - no recovery possible
 
-    // Soft delete associated feedback
-    allFeedback = allFeedback.map(f => {
-        if (f.projectName === projectName) {
-            return {
-                ...f,
-                _deletedAt: now,
-                _lastModified: now,
-                _version: (f._version || 0) + 1
-            };
-        }
-        return f;
-    });
+    // 1. Remove project from allProjects
+    allProjects = allProjects.filter(p => p.projectName !== projectName);
 
-    // Remove tasks and notes (these are local-only, so hard delete is fine)
+    // 2. Remove all feedback for this project
+    allFeedback = allFeedback.filter(f => f.projectName !== projectName);
+
+    // 3. Clear cached images for this project
+    const imageCache = getImageCache();
+    delete imageCache[projectName];
+    saveImageCache(imageCache);
+    console.log(`Deleted cached images for "${projectName}"`);
+
+    // 4. Remove tasks, notes, and changes log
     delete allTasks[projectName];
     delete allNotes[projectName];
     delete allChangesLog[projectName];
 
-    // Save to localStorage (including soft-deleted items for sync)
+    // 5. Remove from completed projects tracking (dashboard)
+    const completedProjects = JSON.parse(localStorage.getItem('completedProjects') || '{}');
+    delete completedProjects[projectName];
+    localStorage.setItem('completedProjects', JSON.stringify(completedProjects));
+
+    // 6. Save cleaned data to localStorage
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
     localStorage.setItem('projectTasks', JSON.stringify(allTasks));
     localStorage.setItem('projectNotes', JSON.stringify(allNotes));
     localStorage.setItem('projectChangesLog', JSON.stringify(allChangesLog));
+
+    console.log(`HARD DELETED project "${projectName}" and all associated data`);
 
     // If deleted project was selected, clear selection
     if (currentProject?.projectName === projectName) {

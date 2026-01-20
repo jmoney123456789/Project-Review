@@ -47,8 +47,19 @@ async function loadDashboardData() {
 
 function loadFromLocalStorage() {
     const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
-    allProjects = stored.filter(item => item.type === 'project');
-    allFeedback = stored.filter(item => item.type === 'feedback');
+    // Filter out soft-deleted items (legacy cleanup) and only get active items
+    allProjects = stored.filter(item => item.type === 'project' && !item._deletedAt);
+    allFeedback = stored.filter(item => item.type === 'feedback' && !item._deletedAt);
+
+    // Restore images from cache
+    const imageCache = JSON.parse(localStorage.getItem('projectImageCache') || '{}');
+    allProjects = allProjects.map(p => {
+        const cachedImages = imageCache[p.projectName];
+        if (cachedImages && cachedImages.length > 0) {
+            return { ...p, images: cachedImages };
+        }
+        return p;
+    });
 }
 
 // ==========================================
@@ -81,24 +92,38 @@ async function syncFromCloud() {
 }
 
 function mergeCloudData(cloudData) {
-    const localProjectNames = new Set(allProjects.map(p => p.projectName));
-    const localFeedbackKeys = new Set(allFeedback.map(f => `${f.projectName}-${f.timestamp}`));
+    // Cloud is the source of truth - replace local data with cloud data
+    // This ensures deletions sync properly across devices
+    const cloudProjects = cloudData.projects || [];
+    const cloudFeedback = cloudData.feedback || [];
 
-    (cloudData.projects || []).forEach(project => {
-        if (!localProjectNames.has(project.projectName)) {
-            allProjects.push(project);
+    // Filter out soft-deleted items (hard deletes won't be in cloud at all)
+    allProjects = cloudProjects.filter(p => !p._deletedAt);
+    allFeedback = cloudFeedback.filter(f => !f._deletedAt);
+
+    // Cache any new images from cloud
+    const imageCache = JSON.parse(localStorage.getItem('projectImageCache') || '{}');
+    allProjects.forEach(p => {
+        if (p.images && p.images.length > 0 && !imageCache[p.projectName]) {
+            imageCache[p.projectName] = p.images;
         }
     });
+    localStorage.setItem('projectImageCache', JSON.stringify(imageCache));
 
-    (cloudData.feedback || []).forEach(feedback => {
-        const key = `${feedback.projectName}-${feedback.timestamp}`;
-        if (!localFeedbackKeys.has(key)) {
-            allFeedback.push(feedback);
+    // Restore images from cache for all projects
+    allProjects = allProjects.map(p => {
+        const cachedImages = imageCache[p.projectName];
+        if (cachedImages && cachedImages.length > 0) {
+            return { ...p, images: cachedImages };
         }
+        return p;
     });
 
+    // Save to localStorage (only active items)
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+    console.log('Dashboard merged from cloud:', allProjects.length, 'projects,', allFeedback.length, 'feedback');
 }
 
 // ==========================================
@@ -167,35 +192,54 @@ function renderDashboard() {
                 </div>
                 ${feedback.length > 0 ? `
                     <div class="feedback-preview">
-                        ${feedback.map((f, i) => `
-                            <div class="feedback-entry">
-                                <div class="feedback-entry-header">
-                                    <span class="feedback-author ${(f.author || 'Jason').toLowerCase()}">${escapeHtml(f.author || 'Jason')}</span>
-                                    <span class="feedback-entry-date">${formatDate(f.timestamp)}</span>
-                                    <div class="feedback-entry-scores">
-                                        <span class="score-pill">Usefulness: ${f.usefulness}/5</span>
+                        ${feedback.map((f, i) => {
+                            // Check if new format (has feedbackText) or old format
+                            const isNewFormat = f.feedbackText !== undefined && f.feedbackText !== null;
+
+                            if (isNewFormat) {
+                                return `
+                                    <div class="feedback-entry feedback-simple">
+                                        <div class="feedback-entry-header">
+                                            <span class="feedback-author ${(f.author || 'Jason').toLowerCase()}">${escapeHtml(f.author || 'Jason')}</span>
+                                            <span class="feedback-entry-date">${formatDate(f.timestamp)}</span>
+                                        </div>
+                                        <div class="feedback-entry-text">
+                                            <span class="comment-text">${escapeHtml(f.feedbackText)}</span>
+                                        </div>
                                     </div>
-                                    <div class="feedback-entry-badges">
-                                        <span class="mini-badge ${f.wouldUse === 'Yes' ? 'yes' : 'no'}">${f.wouldUse === 'Yes' ? 'Would use' : "Won't use"}</span>
-                                        <span class="mini-badge ${f.priority === 'Yes' ? 'yes' : 'no'}">${f.priority === 'Yes' ? 'Priority' : 'Not priority'}</span>
+                                `;
+                            } else {
+                                return `
+                                    <div class="feedback-entry">
+                                        <div class="feedback-entry-header">
+                                            <span class="feedback-author ${(f.author || 'Jason').toLowerCase()}">${escapeHtml(f.author || 'Jason')}</span>
+                                            <span class="feedback-entry-date">${formatDate(f.timestamp)}</span>
+                                            <div class="feedback-entry-scores">
+                                                <span class="score-pill">Usefulness: ${f.usefulness}/5</span>
+                                            </div>
+                                            <div class="feedback-entry-badges">
+                                                <span class="mini-badge ${f.wouldUse === 'Yes' ? 'yes' : 'no'}">${f.wouldUse === 'Yes' ? 'Would use' : "Won't use"}</span>
+                                                <span class="mini-badge ${f.priority === 'Yes' ? 'yes' : 'no'}">${f.priority === 'Yes' ? 'Priority' : 'Not priority'}</span>
+                                            </div>
+                                        </div>
+                                        <div class="feedback-entry-text">
+                                            ${f.whyUseful ? `
+                                            <div class="feedback-comment-block">
+                                                <span class="comment-label">Why useful:</span>
+                                                <span class="comment-text">${escapeHtml(f.whyUseful)}</span>
+                                            </div>
+                                            ` : ''}
+                                            ${f.whyNotUseful ? `
+                                            <div class="feedback-comment-block">
+                                                <span class="comment-label">Why not useful:</span>
+                                                <span class="comment-text">${escapeHtml(f.whyNotUseful)}</span>
+                                            </div>
+                                            ` : ''}
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="feedback-entry-text">
-                                    ${f.whyUseful ? `
-                                    <div class="feedback-comment-block">
-                                        <span class="comment-label">Why useful:</span>
-                                        <span class="comment-text">${escapeHtml(f.whyUseful)}</span>
-                                    </div>
-                                    ` : ''}
-                                    ${f.whyNotUseful ? `
-                                    <div class="feedback-comment-block">
-                                        <span class="comment-label">Why not useful:</span>
-                                        <span class="comment-text">${escapeHtml(f.whyNotUseful)}</span>
-                                    </div>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        `).join('')}
+                                `;
+                            }
+                        }).join('')}
                     </div>
                 ` : ''}
             </div>
