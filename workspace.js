@@ -31,6 +31,52 @@ let lastCloudFetch = 0;
 let syncInProgress = false;
 
 // ==========================================
+// Image Cache System
+// ==========================================
+// Images are cached locally so they only need to be downloaded once
+// This dramatically reduces bandwidth usage
+
+function getImageCache() {
+    return JSON.parse(localStorage.getItem('projectImageCache') || '{}');
+}
+
+function saveImageCache(cache) {
+    try {
+        localStorage.setItem('projectImageCache', JSON.stringify(cache));
+    } catch (e) {
+        // localStorage might be full - clear old images if needed
+        console.warn('Image cache storage failed, clearing old entries');
+        clearOldImageCache();
+    }
+}
+
+function cacheProjectImages(projectName, images) {
+    if (!images || images.length === 0) return;
+    const cache = getImageCache();
+    cache[projectName] = images;
+    saveImageCache(cache);
+    console.log(`Cached ${images.length} images for "${projectName}"`);
+}
+
+function getCachedImages(projectName) {
+    const cache = getImageCache();
+    return cache[projectName] || null;
+}
+
+function clearOldImageCache() {
+    // If storage is full, remove images for deleted projects
+    const cache = getImageCache();
+    const activeProjectNames = new Set(allProjects.filter(p => !p._deletedAt).map(p => p.projectName));
+
+    for (const projectName in cache) {
+        if (!activeProjectNames.has(projectName)) {
+            delete cache[projectName];
+        }
+    }
+    saveImageCache(cache);
+}
+
+// ==========================================
 // Initialize
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
@@ -126,6 +172,17 @@ function loadFromLocalStorage() {
     const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
     allProjects = stored.filter(item => item.type === 'project');
     allFeedback = stored.filter(item => item.type === 'feedback');
+
+    // Restore images from cache for all projects
+    allProjects = allProjects.map(p => {
+        if (!p._deletedAt) {
+            const cachedImages = getCachedImages(p.projectName);
+            if (cachedImages && cachedImages.length > 0) {
+                return { ...p, images: cachedImages };
+            }
+        }
+        return p;
+    });
 }
 
 // ==========================================
@@ -202,15 +259,16 @@ async function syncToCloud() {
             allFeedback = mergedFeedback;
         }
 
-        // Now push the merged data (WITHOUT images to save bandwidth/storage)
-        // Images stay in localStorage only - not synced to cloud
-        const projectsWithoutImages = allProjects.map(p => {
-            const { images, ...projectWithoutImages } = p;
-            return projectWithoutImages;
+        // Cache any local images before syncing
+        allProjects.forEach(p => {
+            if (p.images && p.images.length > 0 && !p._deletedAt) {
+                cacheProjectImages(p.projectName, p.images);
+            }
         });
 
+        // Push data WITH images to cloud (for cross-device sync)
         const pushData = {
-            projects: projectsWithoutImages,
+            projects: allProjects,
             feedback: allFeedback,
             lastUpdated: new Date().toISOString()
         };
@@ -249,13 +307,37 @@ function mergeCloudData(cloudData) {
     const cloudProjects = cloudData.projects || [];
     const cloudFeedback = cloudData.feedback || [];
 
+    // Cache images from cloud data (download once, cache forever)
+    cloudProjects.forEach(p => {
+        if (p.images && p.images.length > 0 && !p._deletedAt) {
+            const cached = getCachedImages(p.projectName);
+            if (!cached) {
+                // New images from cloud - cache them locally
+                cacheProjectImages(p.projectName, p.images);
+                console.log(`Downloaded and cached images for "${p.projectName}"`);
+            }
+        }
+    });
+
     // Merge projects - keep newer version, respect deletions
-    const mergedProjects = smartMergeItems(allProjects, cloudProjects, 'projectName');
+    let mergedProjects = smartMergeItems(allProjects, cloudProjects, 'projectName');
+
+    // Restore images from cache for all projects
+    mergedProjects = mergedProjects.map(p => {
+        if (!p._deletedAt) {
+            const cachedImages = getCachedImages(p.projectName);
+            if (cachedImages && cachedImages.length > 0) {
+                // Use cached images instead of re-downloading
+                return { ...p, images: cachedImages };
+            }
+        }
+        return p;
+    });
 
     // Merge feedback - keep newer version, respect deletions
     const mergedFeedback = smartMergeItems(allFeedback, cloudFeedback, 'timestamp');
 
-    // Filter out soft-deleted items for display (but keep them in storage for sync)
+    // Update state
     allProjects = mergedProjects;
     allFeedback = mergedFeedback;
 

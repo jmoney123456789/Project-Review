@@ -18,8 +18,8 @@
 // - Images are NOT synced to cloud (localStorage only) to save bandwidth
 // - With 2 users, this should last for years of normal use
 // ==========================================
-const JSONBIN_BIN_ID = '696f0bc8d0ea881f407786ba';
-const JSONBIN_API_KEY = '$2a$10$gmgvKZK6IX1aSS64WhVT5OFuAl087Ak0JsiF8JuV9SXdozerUiYVC';
+const JSONBIN_BIN_ID = '6970043cd0ea881f40793eef';
+const JSONBIN_API_KEY = '$2a$10$bsKy2cxdAUQiImhqe5jl7.5b.xf/xuAl/lOqitoA90qU7pjt7jlWS';
 
 // ==========================================
 // Character Counter
@@ -412,20 +412,15 @@ async function syncToCloud() {
     const projects = stored.filter(item => item.type === 'project');
     const feedback = stored.filter(item => item.type === 'feedback');
 
-    // OPTIMIZATION: Strip images from projects before syncing to cloud
-    // Images are stored locally only - this saves massive bandwidth/storage
-    const projectsWithoutImages = projects.map(p => {
-        const { images, ...projectWithoutImages } = p;
-        return projectWithoutImages;
-    });
-
+    // Sync images to cloud - but they'll be cached locally after first download
+    // This enables cross-device image sync while minimizing bandwidth
     const cloudData = {
-        projects: projectsWithoutImages,
+        projects,
         feedback,
         lastUpdated: new Date().toISOString()
     };
 
-    console.log('Syncing to cloud (without images). Projects:', projectsWithoutImages.length, 'Feedback:', feedback.length);
+    console.log('Syncing to cloud. Projects:', projects.length, 'Feedback:', feedback.length);
 
     try {
         const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
