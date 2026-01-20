@@ -22,13 +22,13 @@ let dataLoaded = false;
 let statusFilter = 'all'; // 'all', 'in_progress', 'completed', 'archived'
 let tagFilters = []; // Array of selected tags
 
-// Cache settings - reduced for better sync
-const CACHE_DURATION = 30 * 1000; // 30 seconds (reduced from 5 minutes)
+// Cache settings - OPTIMIZED: Long cache, manual refresh only
+// This saves API requests - JSONBin free tier has limited lifetime requests
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour (sync only on user action)
 let lastCloudFetch = 0;
 
 // Sync lock to prevent concurrent syncs
 let syncInProgress = false;
-let pollingInterval = null;
 
 // ==========================================
 // Initialize
@@ -37,43 +37,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadAllData();
     setupEventListeners();
     setupDeleteModal();
-    setupVisibilityAndPolling();
+    // NO automatic polling - saves API requests
+    // Users click Refresh button when they want latest data
 });
-
-// Setup visibility-based refresh and periodic polling
-function setupVisibilityAndPolling() {
-    // Sync when tab becomes visible (silent refresh, no scroll reset)
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            console.log('Tab became visible, syncing...');
-            silentRefreshFromCloud();
-        }
-    });
-
-    // Start periodic polling (every 30 seconds when page is visible)
-    startPolling();
-}
-
-function startPolling() {
-    if (pollingInterval) clearInterval(pollingInterval);
-
-    pollingInterval = setInterval(() => {
-        if (document.visibilityState === 'visible' && !syncInProgress) {
-            console.log('Periodic sync...');
-            syncFromCloud(true).then(() => {
-                renderProjectList();
-                if (currentProject) {
-                    const updated = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
-                    if (updated) {
-                        // Update currentProject reference without re-selecting (no scroll)
-                        currentProject = updated;
-                        renderExistingFeedback();
-                    }
-                }
-            }).catch(err => console.log('Periodic sync failed:', err));
-        }
-    }, 30000); // 30 seconds
-}
 
 async function loadAllData() {
     // Load tasks, notes, and changes log from localStorage
@@ -90,25 +56,9 @@ async function loadAllData() {
     // Render immediately with local data
     renderProjectList();
 
-    // Check if we need to fetch from cloud (cache expired or first load)
-    const now = Date.now();
-    const cachedTimestamp = parseInt(localStorage.getItem('projectCacheTimestamp') || '0');
-
-    if (JSONBIN_BIN_ID && JSONBIN_API_KEY && (now - cachedTimestamp > CACHE_DURATION)) {
-        console.log('Cache expired, fetching from cloud...');
-        try {
-            await syncFromCloud();
-            // Re-migrate after cloud sync (in case cloud data also needs migration)
-            migrateExistingProjects();
-            localStorage.setItem('projectCacheTimestamp', now.toString());
-            console.log('Cloud sync complete. Projects:', allProjects.filter(p => !p._deletedAt).length);
-            renderProjectList();
-        } catch (err) {
-            console.log('Cloud sync failed, using local data:', err);
-        }
-    } else {
-        console.log('Using cached data');
-    }
+    // OPTIMIZATION: Don't auto-sync from cloud on page load
+    // This saves API requests - users click Refresh button when needed
+    console.log('Loaded from localStorage. Click Refresh to sync from cloud.');
 
     dataLoaded = true;
 }
@@ -165,11 +115,10 @@ function migrateExistingProjects() {
 
     if (needsSync) {
         console.log('Migrated projects with status and version fields');
-        // Save migrated data locally
+        // Save migrated data locally only - don't auto-sync to save API requests
         const combined = [...allProjects, ...allFeedback];
         localStorage.setItem('projectReviewData', JSON.stringify(combined));
-        // Sync to cloud (non-blocking)
-        syncToCloud();
+        // Cloud sync will happen when user submits new data or clicks Refresh
     }
 }
 
@@ -253,9 +202,15 @@ async function syncToCloud() {
             allFeedback = mergedFeedback;
         }
 
-        // Now push the merged data
+        // Now push the merged data (WITHOUT images to save bandwidth/storage)
+        // Images stay in localStorage only - not synced to cloud
+        const projectsWithoutImages = allProjects.map(p => {
+            const { images, ...projectWithoutImages } = p;
+            return projectWithoutImages;
+        });
+
         const pushData = {
-            projects: allProjects,
+            projects: projectsWithoutImages,
             feedback: allFeedback,
             lastUpdated: new Date().toISOString()
         };
@@ -377,31 +332,16 @@ function ensureVersionFields(item) {
     return item;
 }
 
-// Silent refresh from cloud (no scroll reset, no alerts)
-async function silentRefreshFromCloud() {
-    if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) return;
-
-    try {
-        await syncFromCloud(true);
-        localStorage.setItem('projectCacheTimestamp', Date.now().toString());
-        renderProjectList();
-
-        // Update current project data without scrolling
-        if (currentProject) {
-            const updated = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
-            if (updated) {
-                currentProject = updated;
-                renderExistingFeedback();
-            }
-        }
-    } catch (err) {
-        console.log('Silent refresh failed:', err);
-    }
-}
-
-// Force refresh from cloud (bypasses cache)
+// Force refresh from cloud (user-initiated via Refresh button)
 async function forceRefreshFromCloud() {
-    console.log('Force refreshing from cloud...');
+    console.log('User requested refresh from cloud...');
+
+    // Show loading indicator on button
+    const refreshBtn = document.getElementById('refreshProjects');
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '...';
+    }
 
     // Clear cache timestamp to force refresh
     localStorage.setItem('projectCacheTimestamp', '0');
@@ -414,9 +354,11 @@ async function forceRefreshFromCloud() {
 
             // If a project was selected, check if it still exists
             if (currentProject) {
-                const stillExists = allProjects.find(p => p.projectName === currentProject.projectName);
+                const stillExists = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
                 if (stillExists) {
-                    selectProject(stillExists);
+                    // Update without scrolling
+                    currentProject = stillExists;
+                    renderExistingFeedback();
                 } else {
                     // Project was deleted, show empty state
                     currentProject = null;
@@ -427,15 +369,21 @@ async function forceRefreshFromCloud() {
                 }
             }
 
-            console.log('Force refresh complete');
+            console.log('Refresh complete');
         } catch (err) {
-            console.error('Force refresh failed:', err);
-            alert('Failed to refresh from cloud: ' + err.message);
+            console.error('Refresh failed:', err);
+            // Don't show alert - just log to console
         }
     } else {
         // Just reload local data
         loadFromLocalStorage();
         renderProjectList();
+    }
+
+    // Restore button
+    if (refreshBtn) {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = '↻';
     }
 }
 

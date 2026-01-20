@@ -2,8 +2,22 @@
 // PROJECT REVIEW - Main Application Script
 // ==========================================
 
+// ==========================================
 // JSONBin.io Configuration (free JSON storage API)
-// To set up: Go to jsonbin.io, create account, create a bin, get your API key
+// ==========================================
+// HOW TO SET UP (if you get 403 errors):
+// 1. Go to https://jsonbin.io and create a free account
+// 2. Create a new bin (click "Create" button)
+// 3. Copy the Bin ID from the URL (the long string after /b/)
+// 4. Go to API Keys section and create/copy your Access Key
+// 5. Replace the values below with your new credentials
+//
+// COST OPTIMIZATION:
+// - Free tier: 10,000 lifetime requests
+// - This app only syncs on explicit user actions (submit, refresh)
+// - Images are NOT synced to cloud (localStorage only) to save bandwidth
+// - With 2 users, this should last for years of normal use
+// ==========================================
 const JSONBIN_BIN_ID = '696f0bc8d0ea881f407786ba';
 const JSONBIN_API_KEY = '$2a$10$gmgvKZK6IX1aSS64WhVT5OFuAl087Ak0JsiF8JuV9SXdozerUiYVC';
 
@@ -398,13 +412,20 @@ async function syncToCloud() {
     const projects = stored.filter(item => item.type === 'project');
     const feedback = stored.filter(item => item.type === 'feedback');
 
+    // OPTIMIZATION: Strip images from projects before syncing to cloud
+    // Images are stored locally only - this saves massive bandwidth/storage
+    const projectsWithoutImages = projects.map(p => {
+        const { images, ...projectWithoutImages } = p;
+        return projectWithoutImages;
+    });
+
     const cloudData = {
-        projects,
+        projects: projectsWithoutImages,
         feedback,
         lastUpdated: new Date().toISOString()
     };
 
-    console.log('Attempting to sync to cloud. Projects:', projects.length, 'Feedback:', feedback.length);
+    console.log('Syncing to cloud (without images). Projects:', projectsWithoutImages.length, 'Feedback:', feedback.length);
 
     try {
         const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
@@ -522,8 +543,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Clean up any duplicates first
     cleanupDuplicates();
 
-    // First sync from cloud to get latest data
-    await syncFromCloud();
+    // DON'T auto-sync from cloud on page load - saves API requests
+    // Users can click Refresh in workspace to get latest data
+    // Only sync when submitting new data
 
     setupProjectForm();
     setupFeedbackForm();
