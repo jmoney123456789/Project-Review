@@ -1212,3 +1212,271 @@
 .btn-delete:hover {
     background: #dc2626;
 }
+
+/* ==========================================
+   SIDEBAR FILTERS
+   ========================================== */
+
+.sidebar-filters {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+}
+
+.sidebar-filters .filter-group {
+    margin-bottom: 0.75rem;
+}
+
+.sidebar-filters .filter-group:last-child {
+    margin-bottom: 0;
+}
+
+.sidebar-filters label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+}
+
+.sidebar-filters select {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.sidebar-filters select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Tag Filter Buttons */
+.tag-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.tag-filter-btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.tag-filter-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.tag-filter-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+.clear-filters-btn {
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.clear-filters-btn:hover {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+/* ==========================================
+   SIDEBAR STATUS GROUPS
+   ========================================== */
+
+.sidebar-status-group {
+    margin-bottom: 0.5rem;
+}
+
+.sidebar-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+}
+
+.sidebar-status-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+}
+
+.sidebar-status-label.status-in_progress {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+.sidebar-status-label.status-completed {
+    background: var(--success-dim);
+    color: var(--success);
+}
+
+.sidebar-status-label.status-archived {
+    background: rgba(107, 114, 128, 0.15);
+    color: #9ca3af;
+}
+
+.sidebar-status-count {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: var(--bg-input);
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+}
+
+/* Project Tags in Sidebar */
+.sidebar-project-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+}
+
+.sidebar-tag {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.35rem;
+    background: var(--bg-input);
+    border-radius: 8px;
+    color: var(--text-muted);
+}
+
+/* ==========================================
+   PROJECT VIEW STATUS & TAGS
+   ========================================== */
+
+.pv-status-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.pv-status-row label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.pv-status-row select {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.pv-status-row select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.pv-tags-display {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pv-tags-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.pv-tag {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-radius: 12px;
+}
+
+.pv-no-tags {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ==========================================
+   SIMPLIFIED FEEDBACK FORM
+   ========================================== */
+
+.pv-feedback-input-group {
+    margin-bottom: 1rem;
+}
+
+.pv-feedback-input-group textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    resize: vertical;
+}
+
+.pv-feedback-input-group textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.pv-feedback-input-group textarea::placeholder {
+    color: var(--text-muted);
+}
+
+/* Simplified feedback display */
+.pv-feedback-simple {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.pv-feedback-text-simple {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+/* ==========================================
+   FORM FIELD HINT
+   ========================================== */
+
+.field-hint {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}

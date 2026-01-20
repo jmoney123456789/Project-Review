@@ -28,6 +28,24 @@
                 <h2>Projects</h2>
                 <button class="btn-icon" id="refreshProjects" title="Refresh">&#8635;</button>
             </div>
+            <!-- Filter Controls -->
+            <div class="sidebar-filters">
+                <div class="filter-group">
+                    <label for="statusFilter">Status</label>
+                    <select id="statusFilter" onchange="setStatusFilter(this.value)">
+                        <option value="all">All Status</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                </div>
+                <div class="filter-group" id="tagFiltersContainer">
+                    <label>Tags</label>
+                    <div class="tag-filters" id="tagFilters">
+                        <!-- Tag filter buttons loaded dynamically -->
+                    </div>
+                </div>
+            </div>
             <div class="project-list-sidebar" id="projectListSidebar">
                 <!-- Projects loaded dynamically -->
                 <div class="sidebar-empty">
@@ -53,6 +71,18 @@
                     <div class="pv-title-row">
                         <h1 id="pvProjectName">Project Name</h1>
                         <span class="pv-type" id="pvProjectType">Type</span>
+                    </div>
+                    <div class="pv-status-row">
+                        <label for="pvStatusSelect">Status:</label>
+                        <select id="pvStatusSelect" onchange="updateProjectStatus(this.value)">
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="archived">Archived</option>
+                        </select>
+                        <div class="pv-tags-display" id="pvTagsContainer">
+                            <span class="pv-tags-label">Tags:</span>
+                            <span id="pvTags"></span>
+                        </div>
                     </div>
                 </div>
                 <span id="pvCreator" hidden></span>
@@ -121,54 +151,13 @@
                         <!-- Feedback items loaded dynamically -->
                     </div>
 
-                    <!-- New Feedback Form -->
+                    <!-- New Feedback Form (Simplified) -->
                     <div class="pv-new-feedback" id="pvNewFeedback">
-                        <h4>Give Feedback</h4>
+                        <h4>Submit Feedback</h4>
                         <form id="workspaceFeedbackForm">
-                            <!-- Usefulness Scale -->
-                            <div class="pv-rating-row">
-                                <div class="pv-rating-item pv-rating-full">
-                                    <label>How useful is this idea? <span class="rating-scale-hint">(1 = Not useful, 5 = Super useful)</span></label>
-                                    <div class="pv-rating-buttons" data-name="usefulness">
-                                        <button type="button" data-value="1">1</button>
-                                        <button type="button" data-value="2">2</button>
-                                        <button type="button" data-value="3">3</button>
-                                        <button type="button" data-value="4">4</button>
-                                        <button type="button" data-value="5">5</button>
-                                    </div>
-                                </div>
+                            <div class="pv-feedback-input-group">
+                                <textarea name="feedbackText" maxlength="500" placeholder="Share your thoughts on this project..." rows="4"></textarea>
                             </div>
-
-                            <!-- Yes/No -->
-                            <div class="pv-yesno-row">
-                                <div class="pv-yesno-item">
-                                    <label>Would use regularly?</label>
-                                    <div class="pv-yesno-buttons" data-name="wouldUse">
-                                        <button type="button" data-value="Yes">Yes</button>
-                                        <button type="button" data-value="No">No</button>
-                                    </div>
-                                </div>
-                                <div class="pv-yesno-item">
-                                    <label>Worth prioritizing?</label>
-                                    <div class="pv-yesno-buttons" data-name="priority">
-                                        <button type="button" data-value="Yes">Yes</button>
-                                        <button type="button" data-value="No">No</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Text Feedback -->
-                            <div class="pv-text-feedback">
-                                <div class="pv-text-group">
-                                    <label>If this is useful for you, explain why</label>
-                                    <textarea name="whyUseful" maxlength="250" placeholder="What makes this valuable to you?"></textarea>
-                                </div>
-                                <div class="pv-text-group">
-                                    <label>If this isn't useful for you, explain why</label>
-                                    <textarea name="whyNotUseful" maxlength="250" placeholder="What's missing or not working?"></textarea>
-                                </div>
-                            </div>
-
                             <button type="submit" class="btn-submit-feedback">Submit Feedback</button>
                         </form>
                     </div>

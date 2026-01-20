@@ -18,9 +18,17 @@ let currentImageIndex = 0;
 let projectToDelete = null;
 let dataLoaded = false;
 
-// Cache settings
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// Filter state for categories/tags
+let statusFilter = 'all'; // 'all', 'in_progress', 'completed', 'archived'
+let tagFilters = []; // Array of selected tags
+
+// Cache settings - reduced for better sync
+const CACHE_DURATION = 30 * 1000; // 30 seconds (reduced from 5 minutes)
 let lastCloudFetch = 0;
+
+// Sync lock to prevent concurrent syncs
+let syncInProgress = false;
+let pollingInterval = null;
 
 // ==========================================
 // Initialize
@@ -29,7 +37,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadAllData();
     setupEventListeners();
     setupDeleteModal();
+    setupVisibilityAndPolling();
 });
+
+// Setup visibility-based refresh and periodic polling
+function setupVisibilityAndPolling() {
+    // Sync when tab becomes visible
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            console.log('Tab became visible, syncing...');
+            forceRefreshFromCloud();
+        }
+    });
+
+    // Start periodic polling (every 30 seconds when page is visible)
+    startPolling();
+}
+
+function startPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+
+    pollingInterval = setInterval(() => {
+        if (document.visibilityState === 'visible' && !syncInProgress) {
+            console.log('Periodic sync...');
+            syncFromCloud().then(() => {
+                renderProjectList();
+                if (currentProject) {
+                    const updated = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
+                    if (updated) {
+                        renderExistingFeedback();
+                    }
+                }
+            }).catch(err => console.log('Periodic sync failed:', err));
+        }
+    }, 30000); // 30 seconds
+}
 
 async function loadAllData() {
     // Load tasks, notes, and changes log from localStorage
@@ -39,6 +81,9 @@ async function loadAllData() {
 
     // Load projects and feedback from localStorage first
     loadFromLocalStorage();
+
+    // Migrate existing projects (add status and tags if missing)
+    migrateExistingProjects();
 
     // Render immediately with local data
     renderProjectList();
@@ -51,8 +96,10 @@ async function loadAllData() {
         console.log('Cache expired, fetching from cloud...');
         try {
             await syncFromCloud();
+            // Re-migrate after cloud sync (in case cloud data also needs migration)
+            migrateExistingProjects();
             localStorage.setItem('projectCacheTimestamp', now.toString());
-            console.log('Cloud sync complete. Projects:', allProjects.length);
+            console.log('Cloud sync complete. Projects:', allProjects.filter(p => !p._deletedAt).length);
             renderProjectList();
         } catch (err) {
             console.log('Cloud sync failed, using local data:', err);
@@ -62,6 +109,66 @@ async function loadAllData() {
     }
 
     dataLoaded = true;
+}
+
+// Migration function for existing projects
+function migrateExistingProjects() {
+    let needsSync = false;
+
+    allProjects = allProjects.map(project => {
+        let modified = false;
+
+        // Add status if missing (default to 'in_progress')
+        if (!project.status) {
+            project.status = 'in_progress';
+            modified = true;
+        }
+
+        // Add tags array if missing
+        if (!project.tags) {
+            project.tags = [];
+            modified = true;
+        }
+
+        // Add version fields if missing
+        if (!project._version) {
+            project._version = 1;
+            modified = true;
+        }
+        if (!project._lastModified) {
+            project._lastModified = project.timestamp || new Date().toISOString();
+            modified = true;
+        }
+
+        if (modified) needsSync = true;
+        return project;
+    });
+
+    // Also migrate feedback
+    allFeedback = allFeedback.map(feedback => {
+        let modified = false;
+
+        if (!feedback._version) {
+            feedback._version = 1;
+            modified = true;
+        }
+        if (!feedback._lastModified) {
+            feedback._lastModified = feedback.timestamp || new Date().toISOString();
+            modified = true;
+        }
+
+        if (modified) needsSync = true;
+        return feedback;
+    });
+
+    if (needsSync) {
+        console.log('Migrated projects with status and version fields');
+        // Save migrated data locally
+        const combined = [...allProjects, ...allFeedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+        // Sync to cloud (non-blocking)
+        syncToCloud();
+    }
 }
 
 function loadFromLocalStorage() {
@@ -112,58 +219,208 @@ async function syncFromCloud() {
 async function syncToCloud() {
     if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) return;
 
-    const cloudData = {
-        projects: allProjects,
-        feedback: allFeedback,
-        lastUpdated: new Date().toISOString()
-    };
+    // Prevent concurrent syncs
+    if (syncInProgress) {
+        console.log('Sync already in progress, skipping...');
+        return;
+    }
+
+    syncInProgress = true;
 
     try {
-        await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+        // Read-modify-write pattern: fetch latest first, merge, then push
+        console.log('Sync: Fetching latest from cloud before push...');
+        const fetchResponse = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+            headers: { 'X-Access-Key': JSONBIN_API_KEY }
+        });
+
+        if (fetchResponse.ok) {
+            const data = await fetchResponse.json();
+            const cloudData = data.record || { projects: [], feedback: [] };
+
+            // Merge with current local data
+            const cloudProjects = cloudData.projects || [];
+            const cloudFeedback = cloudData.feedback || [];
+
+            // Smart merge to combine local changes with cloud changes
+            const mergedProjects = smartMergeItems(allProjects, cloudProjects, 'projectName');
+            const mergedFeedback = smartMergeItems(allFeedback, cloudFeedback, 'timestamp');
+
+            // Update local state with merged data
+            allProjects = mergedProjects;
+            allFeedback = mergedFeedback;
+        }
+
+        // Now push the merged data
+        const pushData = {
+            projects: allProjects,
+            feedback: allFeedback,
+            lastUpdated: new Date().toISOString()
+        };
+
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Access-Key': JSONBIN_API_KEY
             },
-            body: JSON.stringify(cloudData)
+            body: JSON.stringify(pushData)
         });
-        console.log('Synced to cloud successfully');
+
+        if (response.ok) {
+            console.log('Synced to cloud successfully');
+            // Save merged data to localStorage
+            const combined = [...allProjects, ...allFeedback];
+            localStorage.setItem('projectReviewData', JSON.stringify(combined));
+            // Reset cache timestamp so other tabs get fresh data
+            localStorage.setItem('projectCacheTimestamp', '0');
+        } else {
+            const errorText = await response.text();
+            console.error('Cloud sync failed with status:', response.status, errorText);
+            alert('Cloud sync failed: ' + response.status + ' - Check console for details');
+        }
     } catch (error) {
-        console.log('Cloud sync failed:', error);
+        console.error('Cloud sync error:', error);
+        alert('Cloud sync error: ' + error.message);
+    } finally {
+        syncInProgress = false;
     }
 }
 
 function mergeCloudData(cloudData) {
-    // Simple merge: add any items from cloud that don't exist locally
-    const localProjectNames = new Set(allProjects.map(p => p.projectName));
-    const localFeedbackKeys = new Set(allFeedback.map(f => `${f.projectName}-${f.timestamp}`));
+    // Smart merge: compare versions and timestamps, respect soft deletes
+    const cloudProjects = cloudData.projects || [];
+    const cloudFeedback = cloudData.feedback || [];
 
-    // Add cloud projects not in local
-    (cloudData.projects || []).forEach(project => {
-        if (!localProjectNames.has(project.projectName)) {
-            allProjects.push(project);
-        }
-    });
+    // Merge projects - keep newer version, respect deletions
+    const mergedProjects = smartMergeItems(allProjects, cloudProjects, 'projectName');
 
-    // Add cloud feedback not in local
-    (cloudData.feedback || []).forEach(feedback => {
-        const key = `${feedback.projectName}-${feedback.timestamp}`;
-        if (!localFeedbackKeys.has(key)) {
-            allFeedback.push(feedback);
-        }
-    });
+    // Merge feedback - keep newer version, respect deletions
+    const mergedFeedback = smartMergeItems(allFeedback, cloudFeedback, 'timestamp');
 
-    // Save merged data locally
+    // Filter out soft-deleted items for display (but keep them in storage for sync)
+    allProjects = mergedProjects;
+    allFeedback = mergedFeedback;
+
+    // Save to localStorage (including soft-deleted items)
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+    console.log('Smart merged from cloud:', allProjects.filter(p => !p._deletedAt).length, 'active projects,',
+                allFeedback.filter(f => !f._deletedAt).length, 'active feedback');
+}
+
+// Smart merge function that handles version conflicts
+function smartMergeItems(localItems, cloudItems, keyField) {
+    const merged = new Map();
+
+    // Add all cloud items first
+    cloudItems.forEach(item => {
+        const key = item[keyField];
+        merged.set(key, item);
+    });
+
+    // Merge local items, keeping newer versions
+    localItems.forEach(localItem => {
+        const key = localItem[keyField];
+        const cloudItem = merged.get(key);
+
+        if (!cloudItem) {
+            // Local item doesn't exist in cloud - add it (new item)
+            merged.set(key, ensureVersionFields(localItem));
+        } else {
+            // Both exist - compare versions and timestamps
+            const localVersion = localItem._version || 0;
+            const cloudVersion = cloudItem._version || 0;
+            const localModified = new Date(localItem._lastModified || localItem.timestamp || 0).getTime();
+            const cloudModified = new Date(cloudItem._lastModified || cloudItem.timestamp || 0).getTime();
+
+            // If cloud item is deleted and is newer, keep it deleted
+            if (cloudItem._deletedAt) {
+                const cloudDeletedTime = new Date(cloudItem._deletedAt).getTime();
+                if (cloudDeletedTime > localModified) {
+                    // Cloud deletion is newer - keep cloud (deleted)
+                    merged.set(key, cloudItem);
+                } else {
+                    // Local modification is newer - keep local (restored)
+                    merged.set(key, ensureVersionFields(localItem));
+                }
+            } else if (localItem._deletedAt) {
+                const localDeletedTime = new Date(localItem._deletedAt).getTime();
+                if (localDeletedTime > cloudModified) {
+                    // Local deletion is newer - keep local (deleted)
+                    merged.set(key, localItem);
+                } else {
+                    // Cloud modification is newer - keep cloud (restored)
+                    merged.set(key, ensureVersionFields(cloudItem));
+                }
+            } else {
+                // Neither deleted - keep the one with higher version, or newer timestamp if versions equal
+                if (localVersion > cloudVersion || (localVersion === cloudVersion && localModified > cloudModified)) {
+                    merged.set(key, localItem);
+                } else {
+                    merged.set(key, cloudItem);
+                }
+            }
+        }
+    });
+
+    return Array.from(merged.values());
+}
+
+// Ensure item has version tracking fields
+function ensureVersionFields(item) {
+    if (!item._version) item._version = 1;
+    if (!item._lastModified) item._lastModified = item.timestamp || new Date().toISOString();
+    return item;
+}
+
+// Force refresh from cloud (bypasses cache)
+async function forceRefreshFromCloud() {
+    console.log('Force refreshing from cloud...');
+
+    // Clear cache timestamp to force refresh
+    localStorage.setItem('projectCacheTimestamp', '0');
+
+    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
+        try {
+            await syncFromCloud();
+            localStorage.setItem('projectCacheTimestamp', Date.now().toString());
+            renderProjectList();
+
+            // If a project was selected, check if it still exists
+            if (currentProject) {
+                const stillExists = allProjects.find(p => p.projectName === currentProject.projectName);
+                if (stillExists) {
+                    selectProject(stillExists);
+                } else {
+                    // Project was deleted, show empty state
+                    currentProject = null;
+                    document.getElementById('noProjectSelected').hidden = false;
+                    document.getElementById('projectView').hidden = true;
+                    document.getElementById('todoEmpty').hidden = false;
+                    document.getElementById('todoContainer').hidden = true;
+                }
+            }
+
+            console.log('Force refresh complete');
+        } catch (err) {
+            console.error('Force refresh failed:', err);
+            alert('Failed to refresh from cloud: ' + err.message);
+        }
+    } else {
+        // Just reload local data
+        loadFromLocalStorage();
+        renderProjectList();
+    }
 }
 
 // ==========================================
 // Event Listeners
 // ==========================================
 function setupEventListeners() {
-    // Refresh button
-    document.getElementById('refreshProjects')?.addEventListener('click', loadAllData);
+    // Refresh button - force fetch from cloud
+    document.getElementById('refreshProjects')?.addEventListener('click', forceRefreshFromCloud);
 
     // Gallery navigation
     document.getElementById('pvPrevBtn')?.addEventListener('click', () => navigateGallery(-1));
@@ -173,19 +430,6 @@ function setupEventListeners() {
     document.getElementById('editNotesBtn')?.addEventListener('click', startEditingNotes);
     document.getElementById('cancelNotesBtn')?.addEventListener('click', cancelEditingNotes);
     document.getElementById('saveNotesBtn')?.addEventListener('click', saveNotes);
-
-    // Feedback form rating buttons
-    document.querySelectorAll('.pv-rating-buttons').forEach(group => {
-        group.querySelectorAll('button').forEach(btn => {
-            btn.addEventListener('click', () => selectRating(group, btn));
-        });
-    });
-
-    document.querySelectorAll('.pv-yesno-buttons').forEach(group => {
-        group.querySelectorAll('button').forEach(btn => {
-            btn.addEventListener('click', () => selectRating(group, btn));
-        });
-    });
 
     // Feedback form submission
     document.getElementById('workspaceFeedbackForm')?.addEventListener('submit', submitFeedback);
@@ -211,18 +455,23 @@ function renderProjectList() {
     const container = document.getElementById('projectListSidebar');
     if (!container) return;
 
-    // Remove duplicate projects by projectName (keep first occurrence)
-    const uniqueProjects = [];
+    // Filter out soft-deleted projects and remove duplicates
+    const activeProjects = [];
     const seenNames = new Set();
     allProjects.forEach(project => {
-        if (!seenNames.has(project.projectName)) {
+        if (!project._deletedAt && !seenNames.has(project.projectName)) {
             seenNames.add(project.projectName);
-            uniqueProjects.push(project);
+            activeProjects.push(project);
         }
     });
-    allProjects = uniqueProjects;
 
-    if (allProjects.length === 0) {
+    // Render tag filter buttons
+    renderTagFilters(activeProjects);
+
+    // Get filtered projects based on current filters
+    const filteredProjects = getFilteredProjects(activeProjects);
+
+    if (activeProjects.length === 0) {
         container.innerHTML = `
             <div class="sidebar-empty">
                 <p>No projects yet</p>
@@ -232,27 +481,50 @@ function renderProjectList() {
         return;
     }
 
-    container.innerHTML = allProjects.map((project, index) => `
-        <div class="sidebar-project-item ${currentProject?.projectName === project.projectName ? 'active' : ''}"
-             data-index="${index}">
-            <div class="sidebar-project-content">
-                <div class="sidebar-project-name">${escapeHtml(project.projectName)}</div>
-                <div class="sidebar-project-meta">
-                    <span class="sidebar-project-type">${escapeHtml(project.projectType)}</span>
-                    <span class="sidebar-project-creator">${escapeHtml(project.creator || 'Jason')}</span>
-                </div>
+    if (filteredProjects.length === 0) {
+        container.innerHTML = `
+            <div class="sidebar-empty">
+                <p>No projects match filters</p>
+                <button class="clear-filters-btn" onclick="clearFilters()">Clear Filters</button>
             </div>
-            <button class="sidebar-delete-btn" data-project="${escapeHtml(project.projectName)}" title="Delete project">&times;</button>
-        </div>
-    `).join('');
+        `;
+        return;
+    }
+
+    // Group projects by status
+    const grouped = groupProjectsByStatus(filteredProjects);
+    const statusOrder = ['in_progress', 'completed', 'archived'];
+    const statusLabels = {
+        'in_progress': 'In Progress',
+        'completed': 'Completed',
+        'archived': 'Archived'
+    };
+
+    let html = '';
+    statusOrder.forEach(status => {
+        const projects = grouped[status] || [];
+        if (projects.length === 0) return;
+
+        html += `
+            <div class="sidebar-status-group">
+                <div class="sidebar-status-header">
+                    <span class="sidebar-status-label status-${status}">${statusLabels[status]}</span>
+                    <span class="sidebar-status-count">${projects.length}</span>
+                </div>
+                ${projects.map((project) => renderProjectItem(project, activeProjects)).join('')}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
 
     // Add click listeners
     container.querySelectorAll('.sidebar-project-item').forEach(item => {
         item.addEventListener('click', (e) => {
-            // Don't select if clicking delete button
             if (e.target.classList.contains('sidebar-delete-btn')) return;
-            const index = parseInt(item.dataset.index);
-            selectProject(allProjects[index]);
+            const projectName = item.dataset.projectName;
+            const project = activeProjects.find(p => p.projectName === projectName);
+            if (project) selectProject(project);
         });
     });
 
@@ -263,6 +535,130 @@ function renderProjectList() {
             showDeleteModal(btn.dataset.project);
         });
     });
+}
+
+// Render individual project item
+function renderProjectItem(project, allActiveProjects) {
+    const tags = project.tags || [];
+    const tagsHtml = tags.length > 0
+        ? `<div class="sidebar-project-tags">${tags.map(t => `<span class="sidebar-tag">${escapeHtml(t)}</span>`).join('')}</div>`
+        : '';
+
+    return `
+        <div class="sidebar-project-item ${currentProject?.projectName === project.projectName ? 'active' : ''}"
+             data-project-name="${escapeHtml(project.projectName)}">
+            <div class="sidebar-project-content">
+                <div class="sidebar-project-name">${escapeHtml(project.projectName)}</div>
+                <div class="sidebar-project-meta">
+                    <span class="sidebar-project-type">${escapeHtml(project.projectType)}</span>
+                    <span class="sidebar-project-creator">${escapeHtml(project.creator || 'Jason')}</span>
+                </div>
+                ${tagsHtml}
+            </div>
+            <button class="sidebar-delete-btn" data-project="${escapeHtml(project.projectName)}" title="Delete project">&times;</button>
+        </div>
+    `;
+}
+
+// Group projects by status
+function groupProjectsByStatus(projects) {
+    const groups = {
+        'in_progress': [],
+        'completed': [],
+        'archived': []
+    };
+
+    projects.forEach(project => {
+        const status = project.status || 'in_progress';
+        if (groups[status]) {
+            groups[status].push(project);
+        } else {
+            groups['in_progress'].push(project);
+        }
+    });
+
+    return groups;
+}
+
+// Get filtered projects based on current filter state
+function getFilteredProjects(projects) {
+    return projects.filter(project => {
+        // Filter by status
+        if (statusFilter !== 'all') {
+            const projectStatus = project.status || 'in_progress';
+            if (projectStatus !== statusFilter) return false;
+        }
+
+        // Filter by tags (AND logic - must have all selected tags)
+        if (tagFilters.length > 0) {
+            const projectTags = project.tags || [];
+            const hasAllTags = tagFilters.every(tag => projectTags.includes(tag));
+            if (!hasAllTags) return false;
+        }
+
+        return true;
+    });
+}
+
+// Render tag filter buttons
+function renderTagFilters(projects) {
+    const tagFilterContainer = document.getElementById('tagFilters');
+    if (!tagFilterContainer) return;
+
+    // Collect all unique tags
+    const allTags = new Set();
+    projects.forEach(project => {
+        (project.tags || []).forEach(tag => allTags.add(tag));
+    });
+
+    if (allTags.size === 0) {
+        tagFilterContainer.innerHTML = '';
+        tagFilterContainer.hidden = true;
+        return;
+    }
+
+    tagFilterContainer.hidden = false;
+    tagFilterContainer.innerHTML = Array.from(allTags).sort().map(tag => `
+        <button class="tag-filter-btn ${tagFilters.includes(tag) ? 'active' : ''}"
+                data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>
+    `).join('');
+
+    // Add click listeners
+    tagFilterContainer.querySelectorAll('.tag-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tag = btn.dataset.tag;
+            toggleTagFilter(tag);
+        });
+    });
+}
+
+// Toggle tag filter
+function toggleTagFilter(tag) {
+    const index = tagFilters.indexOf(tag);
+    if (index === -1) {
+        tagFilters.push(tag);
+    } else {
+        tagFilters.splice(index, 1);
+    }
+    renderProjectList();
+}
+
+// Set status filter
+function setStatusFilter(status) {
+    statusFilter = status;
+    // Update dropdown if it exists
+    const dropdown = document.getElementById('statusFilter');
+    if (dropdown) dropdown.value = status;
+    renderProjectList();
+}
+
+// Clear all filters
+function clearFilters() {
+    statusFilter = 'all';
+    tagFilters = [];
+    const dropdown = document.getElementById('statusFilter');
+    if (dropdown) dropdown.value = 'all';
+    renderProjectList();
 }
 
 // ==========================================
@@ -344,12 +740,74 @@ function populateProjectView(project) {
     // Update todo project name
     document.getElementById('todoProjectName').textContent = project.projectName;
 
+    // Update status dropdown in project view
+    const statusSelect = document.getElementById('pvStatusSelect');
+    if (statusSelect) {
+        statusSelect.value = project.status || 'in_progress';
+    }
+
+    // Display tags in project view
+    const tagsContainer = document.getElementById('pvTags');
+    if (tagsContainer) {
+        const tags = project.tags || [];
+        if (tags.length > 0) {
+            tagsContainer.innerHTML = tags.map(t => `<span class="pv-tag">${escapeHtml(t)}</span>`).join('');
+            tagsContainer.parentElement.hidden = false;
+        } else {
+            tagsContainer.innerHTML = '<span class="pv-no-tags">No tags</span>';
+            tagsContainer.parentElement.hidden = false;
+        }
+    }
+
     // Debug: Log images data
     console.log('Project images:', project.images);
     console.log('Images count:', project.images ? project.images.length : 0);
 
     // Setup gallery
     setupGallery(project.images || []);
+}
+
+// Update project status
+async function updateProjectStatus(newStatus) {
+    if (!currentProject) return;
+
+    const projectName = currentProject.projectName;
+    const now = new Date().toISOString();
+
+    // Update the project in allProjects
+    allProjects = allProjects.map(p => {
+        if (p.projectName === projectName) {
+            return {
+                ...p,
+                status: newStatus,
+                _lastModified: now,
+                _version: (p._version || 0) + 1
+            };
+        }
+        return p;
+    });
+
+    // Update currentProject reference
+    currentProject = allProjects.find(p => p.projectName === projectName);
+
+    // Save to localStorage
+    const combined = [...allProjects, ...allFeedback];
+    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+    // Log the change
+    const user = getCurrentUser();
+    const statusLabels = {
+        'in_progress': 'In Progress',
+        'completed': 'Completed',
+        'archived': 'Archived'
+    };
+    logChange(projectName, user, 'updated', `Changed status to ${statusLabels[newStatus]}`);
+
+    // Sync to cloud (non-blocking)
+    syncToCloud();
+
+    // Re-render sidebar to show updated grouping
+    renderProjectList();
 }
 
 // ==========================================
@@ -461,44 +919,63 @@ function saveNotes() {
 // ==========================================
 // Feedback
 // ==========================================
-function selectRating(group, selectedBtn) {
-    group.querySelectorAll('button').forEach(btn => btn.classList.remove('selected'));
-    selectedBtn.classList.add('selected');
-}
-
 function renderExistingFeedback() {
     const container = document.getElementById('pvExistingFeedback');
-    const projectFeedback = allFeedback.filter(f => f.projectName === currentProject.projectName);
+    // Filter out soft-deleted feedback
+    const projectFeedback = allFeedback.filter(f =>
+        f.projectName === currentProject.projectName && !f._deletedAt
+    );
 
     if (projectFeedback.length === 0) {
         container.innerHTML = '';
         return;
     }
 
-    container.innerHTML = projectFeedback.map((f, index) => `
-        <div class="pv-feedback-item">
-            <div class="pv-feedback-item-header">
-                <span class="pv-feedback-author ${(f.author || 'Jason').toLowerCase()}">${escapeHtml(f.author || 'Jason')}</span>
-                <span>${formatDate(f.timestamp)}</span>
-            </div>
-            <div class="pv-feedback-scores">
-                <div class="pv-feedback-score">
-                    <span class="pv-feedback-score-label">Usefulness</span>
-                    <span class="pv-feedback-score-value">${f.usefulness}/5</span>
+    container.innerHTML = projectFeedback.map((f) => {
+        // Check if this is new format (has feedbackText) or old format (has usefulness rating)
+        const isNewFormat = f.feedbackText !== undefined && f.feedbackText !== null;
+
+        if (isNewFormat) {
+            // New simplified format - just show the text
+            return `
+                <div class="pv-feedback-item pv-feedback-simple">
+                    <div class="pv-feedback-item-header">
+                        <span class="pv-feedback-author ${(f.author || 'Jason').toLowerCase()}">${escapeHtml(f.author || 'Jason')}</span>
+                        <span>${formatDate(f.timestamp)}</span>
+                    </div>
+                    <div class="pv-feedback-text-simple">
+                        ${escapeHtml(f.feedbackText)}
+                    </div>
                 </div>
-            </div>
-            <div class="pv-feedback-badges">
-                <span class="pv-badge ${f.wouldUse === 'Yes' ? 'yes' : 'no'}">${f.wouldUse === 'Yes' ? 'Would use' : "Wouldn't use"}</span>
-                <span class="pv-badge ${f.priority === 'Yes' ? 'yes' : 'no'}">${f.priority === 'Yes' ? 'Priority' : 'Not priority'}</span>
-            </div>
-            <div class="pv-feedback-text">
-                ${f.whyUseful ? `<strong>Why useful:</strong> ${escapeHtml(f.whyUseful)}` : ''}
-                ${f.whyNotUseful ? `<strong>Why not useful:</strong> ${escapeHtml(f.whyNotUseful)}` : ''}
-                ${f.bestThing ? `<strong>Best thing:</strong> ${escapeHtml(f.bestThing)}` : ''}
-                ${f.improve ? `<strong>To improve:</strong> ${escapeHtml(f.improve)}` : ''}
-            </div>
-        </div>
-    `).join('');
+            `;
+        } else {
+            // Old format with ratings - display as before
+            return `
+                <div class="pv-feedback-item">
+                    <div class="pv-feedback-item-header">
+                        <span class="pv-feedback-author ${(f.author || 'Jason').toLowerCase()}">${escapeHtml(f.author || 'Jason')}</span>
+                        <span>${formatDate(f.timestamp)}</span>
+                    </div>
+                    <div class="pv-feedback-scores">
+                        <div class="pv-feedback-score">
+                            <span class="pv-feedback-score-label">Usefulness</span>
+                            <span class="pv-feedback-score-value">${f.usefulness}/5</span>
+                        </div>
+                    </div>
+                    <div class="pv-feedback-badges">
+                        <span class="pv-badge ${f.wouldUse === 'Yes' ? 'yes' : 'no'}">${f.wouldUse === 'Yes' ? 'Would use' : "Wouldn't use"}</span>
+                        <span class="pv-badge ${f.priority === 'Yes' ? 'yes' : 'no'}">${f.priority === 'Yes' ? 'Priority' : 'Not priority'}</span>
+                    </div>
+                    <div class="pv-feedback-text">
+                        ${f.whyUseful ? `<strong>Why useful:</strong> ${escapeHtml(f.whyUseful)}` : ''}
+                        ${f.whyNotUseful ? `<strong>Why not useful:</strong> ${escapeHtml(f.whyNotUseful)}` : ''}
+                        ${f.bestThing ? `<strong>Best thing:</strong> ${escapeHtml(f.bestThing)}` : ''}
+                        ${f.improve ? `<strong>To improve:</strong> ${escapeHtml(f.improve)}` : ''}
+                    </div>
+                </div>
+            `;
+        }
+    }).join('');
 }
 
 function resetFeedbackForm() {
@@ -510,46 +987,48 @@ function resetFeedbackForm() {
 function submitFeedback(e) {
     e.preventDefault();
 
-    // Get rating values
-    const usefulness = document.querySelector('.pv-rating-buttons[data-name="usefulness"] button.selected')?.dataset.value;
-    const wouldUse = document.querySelector('.pv-yesno-buttons[data-name="wouldUse"] button.selected')?.dataset.value;
-    const priority = document.querySelector('.pv-yesno-buttons[data-name="priority"] button.selected')?.dataset.value;
+    const form = e.target;
+    const formData = new FormData(form);
+    const feedbackText = formData.get('feedbackText')?.trim();
 
-    // Validate
-    if (!usefulness || !wouldUse || !priority) {
-        alert('Please answer all rating questions');
+    // Validate - just need feedback text
+    if (!feedbackText) {
+        alert('Please enter your feedback');
         return;
     }
 
-    const form = e.target;
-    const formData = new FormData(form);
-
     const user = getCurrentUser();
+    const now = new Date().toISOString();
     const data = {
         type: 'feedback',
-        timestamp: new Date().toISOString(),
+        timestamp: now,
         projectName: currentProject.projectName,
         author: user,
-        usefulness,
-        wouldUse,
-        priority,
-        whyUseful: formData.get('whyUseful') || '',
-        whyNotUseful: formData.get('whyNotUseful') || ''
+        // New simplified format
+        feedbackText: feedbackText,
+        // Legacy fields set to null for backwards compatibility
+        usefulness: null,
+        wouldUse: null,
+        priority: null,
+        whyUseful: null,
+        whyNotUseful: null,
+        // Version tracking
+        _version: 1,
+        _lastModified: now
     };
 
     // Update local state
     allFeedback.push(data);
 
     // Save to localStorage
-    const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
-    stored.push(data);
-    localStorage.setItem('projectReviewData', JSON.stringify(stored));
+    const combined = [...allProjects, ...allFeedback];
+    localStorage.setItem('projectReviewData', JSON.stringify(combined));
 
     // Sync to cloud (non-blocking)
     syncToCloud();
 
     // Log the change
-    logChange(currentProject.projectName, user, 'feedback', `Submitted feedback (Usefulness: ${data.usefulness}/5)`);
+    logChange(currentProject.projectName, user, 'feedback', 'Submitted feedback');
 
     // Re-render
     renderExistingFeedback();
@@ -807,19 +1286,40 @@ async function confirmDeleteProject() {
     if (!projectToDelete) return;
 
     const projectName = projectToDelete;
+    const now = new Date().toISOString();
 
-    // Remove from allProjects
-    allProjects = allProjects.filter(p => p.projectName !== projectName);
+    // Soft delete: mark projects with _deletedAt timestamp instead of removing
+    allProjects = allProjects.map(p => {
+        if (p.projectName === projectName) {
+            return {
+                ...p,
+                _deletedAt: now,
+                _lastModified: now,
+                _version: (p._version || 0) + 1
+            };
+        }
+        return p;
+    });
 
-    // Remove associated feedback
-    allFeedback = allFeedback.filter(f => f.projectName !== projectName);
+    // Soft delete associated feedback
+    allFeedback = allFeedback.map(f => {
+        if (f.projectName === projectName) {
+            return {
+                ...f,
+                _deletedAt: now,
+                _lastModified: now,
+                _version: (f._version || 0) + 1
+            };
+        }
+        return f;
+    });
 
-    // Remove tasks and notes
+    // Remove tasks and notes (these are local-only, so hard delete is fine)
     delete allTasks[projectName];
     delete allNotes[projectName];
     delete allChangesLog[projectName];
 
-    // Save to localStorage
+    // Save to localStorage (including soft-deleted items for sync)
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
     localStorage.setItem('projectTasks', JSON.stringify(allTasks));

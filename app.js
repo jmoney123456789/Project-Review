@@ -244,9 +244,17 @@ function setupProjectForm() {
 
         try {
             const formData = new FormData(form);
+            const now = new Date().toISOString();
+
+            // Parse tags from comma-separated string
+            const tagsInput = formData.get('tags') || '';
+            const tags = tagsInput.split(',')
+                .map(t => t.trim())
+                .filter(t => t.length > 0);
+
             const data = {
                 type: 'project',
-                timestamp: new Date().toISOString(),
+                timestamp: now,
                 projectName: formData.get('projectName'),
                 projectType: formData.get('projectType'),
                 creator: formData.get('creator') || 'Jason',
@@ -254,7 +262,13 @@ function setupProjectForm() {
                 problem: formData.get('problem'),
                 success: formData.get('success'),
                 currentState: formData.get('currentState'),
-                link: formData.get('link') || ''
+                link: formData.get('link') || '',
+                // New fields for categories/tags
+                status: formData.get('status') || 'in_progress',
+                tags: tags,
+                // Version tracking fields
+                _version: 1,
+                _lastModified: now
             };
 
             // Convert images to base64 for storage
@@ -442,33 +456,16 @@ async function syncFromCloud() {
             console.log('Cloud data received:', data);
             const cloudData = data.record || { projects: [], feedback: [] };
 
-            // Get local data
-            const localStored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
-            const localProjects = localStored.filter(item => item.type === 'project');
-            const localFeedback = localStored.filter(item => item.type === 'feedback');
+            // Cloud is the source of truth - replace local data
+            const cloudProjects = cloudData.projects || [];
+            const cloudFeedback = cloudData.feedback || [];
 
-            console.log('Local projects:', localProjects.length, 'Cloud projects:', (cloudData.projects || []).length);
+            console.log('Cloud has', cloudProjects.length, 'projects,', cloudFeedback.length, 'feedback');
 
-            // Merge cloud data with local (add items from cloud not in local)
-            const localProjectNames = new Set(localProjects.map(p => p.projectName));
-            const localFeedbackKeys = new Set(localFeedback.map(f => `${f.projectName}-${f.timestamp}`));
-
-            (cloudData.projects || []).forEach(project => {
-                if (!localProjectNames.has(project.projectName)) {
-                    localStored.push(project);
-                    console.log('Added project from cloud:', project.projectName);
-                }
-            });
-
-            (cloudData.feedback || []).forEach(feedback => {
-                const key = `${feedback.projectName}-${feedback.timestamp}`;
-                if (!localFeedbackKeys.has(key)) {
-                    localStored.push(feedback);
-                }
-            });
-
-            localStorage.setItem('projectReviewData', JSON.stringify(localStored));
-            console.log('Synced from cloud, total items:', localStored.length);
+            // Replace local data with cloud data
+            const combined = [...cloudProjects, ...cloudFeedback];
+            localStorage.setItem('projectReviewData', JSON.stringify(combined));
+            console.log('Synced from cloud, total items:', combined.length);
         } else {
             const errorText = await response.text();
             console.error('Cloud fetch failed with status:', response.status, errorText);

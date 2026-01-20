@@ -126,6 +126,21 @@
                         <option value="Ash">Ash</option>
                     </select>
                 </div>
+
+                <div class="form-group">
+                    <label for="status">Status</label>
+                    <select id="status" name="status">
+                        <option value="in_progress" selected>In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="tags">Tags</label>
+                    <input type="text" id="tags" name="tags" placeholder="Enter tags separated by commas (e.g., urgent, backend, v2)">
+                    <span class="field-hint">Comma-separated tags for filtering</span>
+                </div>
             </section>
 
             <!-- Section 4: Project Overview -->

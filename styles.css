@@ -1569,3 +1569,11 @@ textarea {
 .preview-thumb:hover .remove-image {
     display: flex;
 }
+
+/* Field Hint */
+.field-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+}
