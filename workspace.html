@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Review - Workspace</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="workspace.css">
+</head>
+<body class="workspace-body">
+    <!-- Top Bar -->
+    <header class="unified-header workspace-header">
+        <div class="header-brand">
+            <div class="header-brand-icon"><span></span></div>
+            <span class="header-brand-text">Projects</span>
+        </div>
+        <nav class="header-nav">
+            <a href="index.html" class="header-link">+ New Project</a>
+            <a href="workspace.html" class="header-link active">Workspace</a>
+            <a href="dashboard.html" class="header-link">Dashboard</a>
+        </nav>
+    </header>
+
+    <div class="workspace-container">
+        <!-- Left Sidebar: Project List -->
+        <aside class="sidebar-left">
+            <div class="sidebar-header">
+                <h2>Projects</h2>
+                <button class="btn-icon" id="refreshProjects" title="Refresh">&#8635;</button>
+            </div>
+            <div class="project-list-sidebar" id="projectListSidebar">
+                <!-- Projects loaded dynamically -->
+                <div class="sidebar-empty">
+                    <p>No projects yet</p>
+                    <a href="index.html">Create one</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- No Project Selected State -->
+            <div class="no-project-selected" id="noProjectSelected">
+                <div class="empty-state-icon">&#128269;</div>
+                <h2>Select a Project</h2>
+                <p>Choose a project from the sidebar to view details and give feedback</p>
+            </div>
+
+            <!-- Project View (hidden until selected) -->
+            <div class="project-view" id="projectView" hidden>
+                <!-- Project Header -->
+                <div class="project-view-header">
+                    <div class="pv-title-row">
+                        <h1 id="pvProjectName">Project Name</h1>
+                        <span class="pv-type" id="pvProjectType">Type</span>
+                    </div>
+                </div>
+                <span id="pvCreator" hidden></span>
+
+                <!-- Image Gallery + Notes Side by Side -->
+                <div class="project-media-row">
+                    <!-- Image Gallery -->
+                    <div class="pv-gallery">
+                        <div class="pv-gallery-main">
+                            <img id="pvMainImage" src="" alt="Project screenshot" style="display: none;">
+                            <button class="pv-gallery-nav pv-prev" id="pvPrevBtn" hidden>&lt;</button>
+                            <button class="pv-gallery-nav pv-next" id="pvNextBtn" hidden>&gt;</button>
+                            <div class="pv-no-images" id="pvNoImages" style="display: block;">
+                                <span>No screenshots</span>
+                            </div>
+                        </div>
+                        <div class="pv-thumbnails" id="pvThumbnails"></div>
+                    </div>
+
+                    <!-- Creator Notes -->
+                    <div class="pv-notes-panel">
+                        <div class="pv-notes-header">
+                            <h3>Creator Notes</h3>
+                            <button class="btn-small" id="editNotesBtn">Edit</button>
+                        </div>
+                        <div class="pv-notes-content" id="pvNotesContent">
+                            <p id="pvNotesText">No notes yet. Click Edit to add notes about this project.</p>
+                        </div>
+                        <div class="pv-notes-edit" id="pvNotesEdit" hidden>
+                            <textarea id="pvNotesInput" placeholder="Add notes about this project..."></textarea>
+                            <div class="pv-notes-actions">
+                                <button class="btn-small btn-cancel" id="cancelNotesBtn">Cancel</button>
+                                <button class="btn-small btn-save" id="saveNotesBtn">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Description Section -->
+                <div class="pv-description">
+                    <h3>Description</h3>
+                    <p id="pvSummary">Project summary goes here</p>
+                    <details class="pv-details-expand">
+                        <summary>More Details</summary>
+                        <div class="pv-details-grid">
+                            <div class="pv-detail-item">
+                                <span class="pv-detail-label">Main Concept</span>
+                                <p id="pvProblem">-</p>
+                            </div>
+                            <div class="pv-detail-item">
+                                <span class="pv-detail-label">Project Goal</span>
+                                <p id="pvSuccess">-</p>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <!-- Feedback Section -->
+                <div class="pv-feedback-section">
+                    <div class="pv-feedback-header">
+                        <h3>Feedback</h3>
+                    </div>
+
+                    <!-- Existing Feedback -->
+                    <div class="pv-existing-feedback" id="pvExistingFeedback">
+                        <!-- Feedback items loaded dynamically -->
+                    </div>
+
+                    <!-- New Feedback Form -->
+                    <div class="pv-new-feedback" id="pvNewFeedback">
+                        <h4>Give Feedback</h4>
+                        <form id="workspaceFeedbackForm">
+                            <!-- Usefulness Scale -->
+                            <div class="pv-rating-row">
+                                <div class="pv-rating-item pv-rating-full">
+                                    <label>How useful is this idea? <span class="rating-scale-hint">(1 = Not useful, 5 = Super useful)</span></label>
+                                    <div class="pv-rating-buttons" data-name="usefulness">
+                                        <button type="button" data-value="1">1</button>
+                                        <button type="button" data-value="2">2</button>
+                                        <button type="button" data-value="3">3</button>
+                                        <button type="button" data-value="4">4</button>
+                                        <button type="button" data-value="5">5</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Yes/No -->
+                            <div class="pv-yesno-row">
+                                <div class="pv-yesno-item">
+                                    <label>Would use regularly?</label>
+                                    <div class="pv-yesno-buttons" data-name="wouldUse">
+                                        <button type="button" data-value="Yes">Yes</button>
+                                        <button type="button" data-value="No">No</button>
+                                    </div>
+                                </div>
+                                <div class="pv-yesno-item">
+                                    <label>Worth prioritizing?</label>
+                                    <div class="pv-yesno-buttons" data-name="priority">
+                                        <button type="button" data-value="Yes">Yes</button>
+                                        <button type="button" data-value="No">No</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Text Feedback -->
+                            <div class="pv-text-feedback">
+                                <div class="pv-text-group">
+                                    <label>If this is useful for you, explain why</label>
+                                    <textarea name="whyUseful" maxlength="250" placeholder="What makes this valuable to you?"></textarea>
+                                </div>
+                                <div class="pv-text-group">
+                                    <label>If this isn't useful for you, explain why</label>
+                                    <textarea name="whyNotUseful" maxlength="250" placeholder="What's missing or not working?"></textarea>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn-submit-feedback">Submit Feedback</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar: To-Do List -->
+        <aside class="sidebar-right">
+            <div class="sidebar-header">
+                <h2>Tasks</h2>
+            </div>
+
+            <!-- No project selected state -->
+            <div class="todo-empty" id="todoEmpty">
+                <p>Select a project to see tasks</p>
+            </div>
+
+            <!-- To-do list for selected project -->
+            <div class="todo-container" id="todoContainer" hidden>
+                <div class="todo-project-name" id="todoProjectName">Project Name</div>
+
+                <!-- Add Task Form -->
+                <div class="todo-add-form">
+                    <input type="text" id="newTaskInput" placeholder="Add a task...">
+                    <select id="newTaskAssignee">
+                        <option value="Jason">Jason</option>
+                        <option value="Ash">Ash</option>
+                    </select>
+                    <button id="addTaskBtn">+</button>
+                </div>
+
+                <!-- Task List -->
+                <div class="todo-list" id="todoList">
+                    <!-- Tasks loaded dynamically -->
+                </div>
+
+                <!-- Changes Log -->
+                <details class="changes-log-section">
+                    <summary class="changes-log-header">
+                        <span>Changes Log</span>
+                        <span class="changes-count" id="changesCount">0</span>
+                    </summary>
+                    <div class="changes-log-list" id="changesLogList">
+                        <!-- Changes loaded dynamically -->
+                        <div class="changes-empty">No changes yet</div>
+                    </div>
+                </details>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="deleteModal" hidden>
+        <div class="modal-backdrop" id="deleteModalBackdrop"></div>
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Delete Project</h2>
+                <button class="modal-close" id="deleteModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="delete-warning">Are you sure you want to delete "<span id="deleteProjectName"></span>"?</p>
+                <p class="delete-subtext">This action cannot be undone. All feedback and tasks associated with this project will also be deleted.</p>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="deleteCancelBtn">Cancel</button>
+                    <button class="btn-delete" id="deleteConfirmBtn">Delete Project</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="workspace.js"></script>
+</body>
+</html>

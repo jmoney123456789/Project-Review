@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Review</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="unified-header">
+        <div class="header-brand">
+            <div class="header-brand-icon"><span></span></div>
+            <span class="header-brand-text">Projects</span>
+        </div>
+        <nav class="header-nav">
+            <a href="index.html" class="header-link active">+ New Project</a>
+            <a href="workspace.html" class="header-link">Workspace</a>
+            <a href="dashboard.html" class="header-link">Dashboard</a>
+        </nav>
+    </header>
+
+    <main class="container container-full">
+        <div class="form-header">
+            <h1>Submit a Project Idea</h1>
+            <p>Share your concept and get objective feedback</p>
+        </div>
+
+        <form id="projectForm" class="form-card">
+            <!-- Section 1: Screenshots (moved to top) -->
+            <section class="form-section">
+                <h2>Screenshots</h2>
+
+                <div class="form-group">
+                    <label for="attachments">Upload Images</label>
+                    <div class="file-upload" id="fileUploadArea">
+                        <input type="file" id="attachments" name="attachments" multiple accept="image/*" hidden>
+                        <div class="file-upload-content">
+                            <span class="upload-icon">+</span>
+                            <span>Click to upload or drag images here</span>
+                            <span class="file-types">PNG, JPG, GIF (max 5 images)</span>
+                        </div>
+                    </div>
+                    <!-- Image Preview Carousel -->
+                    <div id="imagePreviewContainer" class="image-preview-container" hidden>
+                        <div class="image-preview-carousel" id="imagePreviewCarousel">
+                            <!-- Previews loaded dynamically -->
+                        </div>
+                        <div class="image-preview-nav" id="imagePreviewNav" hidden>
+                            <button type="button" class="preview-nav-btn" id="prevImageBtn">&lt;</button>
+                            <span class="preview-counter" id="previewCounter">1 / 1</span>
+                            <button type="button" class="preview-nav-btn" id="nextImageBtn">&gt;</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 2: Current State (moved up) -->
+            <section class="form-section">
+                <h2>Current State</h2>
+
+                <div class="form-group">
+                    <label for="currentState">What already exists?</label>
+                    <select id="currentState" name="currentState">
+                        <option value="Just an idea">Just an idea</option>
+                        <option value="Rough sketch/notes">Rough sketch/notes</option>
+                        <option value="Partial prototype">Partial prototype</option>
+                        <option value="Working version">Working version</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="link">Link (if applicable)</label>
+                    <input type="url" id="link" name="link" placeholder="https://...">
+                </div>
+            </section>
+
+            <!-- Section 3: Basic Info -->
+            <section class="form-section">
+                <h2>Basic Info</h2>
+
+                <div class="form-group">
+                    <label for="projectName">Project Name *</label>
+                    <input type="text" id="projectName" name="projectName" required placeholder="Give your project a name">
+                </div>
+
+                <div class="form-group">
+                    <label for="projectType">Project Type *</label>
+                    <select id="projectType" name="projectType" required>
+                        <option value="">Select a type...</option>
+                        <optgroup label="Trading">
+                            <option value="Backtest Idea">Backtest Idea</option>
+                            <option value="Execution Plan">Execution Plan</option>
+                            <option value="Risk Management">Risk Management</option>
+                            <option value="Strategy Tool">Strategy Tool</option>
+                            <option value="Indicator">Indicator</option>
+                            <option value="Alert System">Alert System</option>
+                            <option value="Scanner">Scanner</option>
+                            <option value="Journal/Tracker">Journal/Tracker</option>
+                        </optgroup>
+                        <optgroup label="Mindset & Psychology">
+                            <option value="Trading Routine">Trading Routine</option>
+                            <option value="Mental Framework">Mental Framework</option>
+                            <option value="Discipline System">Discipline System</option>
+                            <option value="Emotion Management">Emotion Management</option>
+                            <option value="Performance Review">Performance Review</option>
+                            <option value="Habit Tracker">Habit Tracker</option>
+                        </optgroup>
+                        <optgroup label="Development">
+                            <option value="App">App</option>
+                            <option value="Script/Automation">Script/Automation</option>
+                            <option value="Dashboard">Dashboard</option>
+                            <option value="API Integration">API Integration</option>
+                        </optgroup>
+                        <optgroup label="Other">
+                            <option value="Research">Research</option>
+                            <option value="Documentation">Documentation</option>
+                            <option value="Other">Other</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="creator">Created by *</label>
+                    <select id="creator" name="creator" required>
+                        <option value="Jason">Jason</option>
+                        <option value="Ash">Ash</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- Section 4: Project Overview -->
+            <section class="form-section">
+                <h2>Project Overview</h2>
+
+                <div class="form-group">
+                    <label for="summary">One-Sentence Summary *</label>
+                    <input type="text" id="summary" name="summary" required maxlength="150" placeholder="Describe your idea in one sentence">
+                    <span class="char-count"><span id="summaryCount">0</span>/150</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="problem">What is the main concept or idea? *</label>
+                    <textarea id="problem" name="problem" required rows="3" placeholder="Describe the core concept behind this project"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="success">What is our goal with this project? *</label>
+                    <textarea id="success" name="success" required rows="3" placeholder="What are we trying to achieve?"></textarea>
+                </div>
+            </section>
+
+            <button type="submit" class="btn-submit">
+                <span class="btn-text">Submit</span>
+                <span class="btn-loading" hidden>Submitting...</span>
+            </button>
+        </form>
+
+        <div id="successMessage" class="success-message" hidden>
+            <div class="success-icon">&#10003;</div>
+            <h2>Project Submitted!</h2>
+            <p>Your idea has been saved. Share the review link with your partner to get feedback.</p>
+            <a href="workspace.html" class="btn-secondary">Go to Workspace</a>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

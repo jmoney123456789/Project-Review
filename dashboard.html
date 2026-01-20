@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Review - Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <header class="unified-header">
+        <div class="header-brand">
+            <div class="header-brand-icon"><span></span></div>
+            <span class="header-brand-text">Projects</span>
+        </div>
+        <nav class="header-nav">
+            <a href="index.html" class="header-link">+ New Project</a>
+            <a href="workspace.html" class="header-link">Workspace</a>
+            <a href="dashboard.html" class="header-link active">Dashboard</a>
+        </nav>
+    </header>
+
+    <main class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>Dashboard</h1>
+        </div>
+
+        <!-- Project List -->
+        <div class="dashboard-list" id="dashboardList">
+            <!-- Projects loaded dynamically -->
+            <div class="dashboard-empty">
+                <p>No projects yet</p>
+                <a href="index.html">Create your first project</a>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

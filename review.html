@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Review - Give Feedback</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">Project Review</div>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">Submit Idea</a>
+            <a href="review.html" class="nav-link active">Give Feedback</a>
+            <a href="dashboard.html" class="nav-link">Dashboard</a>
+        </div>
+    </nav>
+
+    <main class="container container-wide">
+        <div class="form-header">
+            <h1>Give Feedback</h1>
+            <p>Review a project idea objectively</p>
+        </div>
+
+        <!-- Project Selection (minimal) -->
+        <div class="project-selector">
+            <select id="projectSelect" name="projectSelect" required>
+                <option value="">Select a project to review...</option>
+            </select>
+        </div>
+
+        <!-- Project Showcase - Hidden until project selected -->
+        <div id="projectShowcase" class="project-showcase" hidden>
+
+            <!-- Image Gallery - Front and Center -->
+            <div class="image-gallery" id="imageGallery">
+                <div class="gallery-main">
+                    <img id="mainImage" src="" alt="Project screenshot">
+                    <button class="gallery-nav gallery-prev" id="prevBtn" hidden>&lt;</button>
+                    <button class="gallery-nav gallery-next" id="nextBtn" hidden>&gt;</button>
+                </div>
+                <div class="gallery-thumbnails" id="thumbnails"></div>
+                <div class="no-images" id="noImages">
+                    <span class="no-images-icon">&#128247;</span>
+                    <p>No screenshots uploaded for this project</p>
+                </div>
+            </div>
+
+            <!-- Project Info Card -->
+            <div class="project-info-card">
+                <div class="project-header">
+                    <h2 id="detailName">Project Name</h2>
+                    <span class="detail-type" id="detailType">Type</span>
+                </div>
+                <p class="project-summary" id="detailSummary">Summary goes here</p>
+                <div class="project-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Status</span>
+                        <span class="meta-value" id="detailState">Current state</span>
+                    </div>
+                    <div class="meta-item" id="linkContainer" hidden>
+                        <span class="meta-label">Link</span>
+                        <a class="meta-value meta-link" id="detailLink" href="#" target="_blank">View Project</a>
+                    </div>
+                </div>
+
+                <!-- Expandable Details -->
+                <details class="project-details-expand">
+                    <summary>View Full Details</summary>
+                    <div class="details-content">
+                        <div class="detail-section">
+                            <h4>Problem it solves</h4>
+                            <p id="detailProblem">-</p>
+                        </div>
+                        <div class="detail-section">
+                            <h4>Target audience</h4>
+                            <p id="detailAudience">-</p>
+                        </div>
+                        <div class="detail-section">
+                            <h4>Success criteria</h4>
+                            <p id="detailSuccess">-</p>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- Feedback Form - Only shown after project selected -->
+        <form id="feedbackForm" class="form-card" hidden>
+            <!-- Section 1: Quick Assessment -->
+            <section class="form-section">
+                <h2>Quick Assessment</h2>
+
+                <div class="form-group rating-group">
+                    <label>How clear is the problem this solves? *</label>
+                    <div class="rating-scale">
+                        <div class="rating-labels">
+                            <span>Unclear</span>
+                            <span>Crystal clear</span>
+                        </div>
+                        <div class="rating-options">
+                            <input type="radio" name="clarity" value="1" id="clarity1" required>
+                            <label for="clarity1">1</label>
+                            <input type="radio" name="clarity" value="2" id="clarity2">
+                            <label for="clarity2">2</label>
+                            <input type="radio" name="clarity" value="3" id="clarity3">
+                            <label for="clarity3">3</label>
+                            <input type="radio" name="clarity" value="4" id="clarity4">
+                            <label for="clarity4">4</label>
+                            <input type="radio" name="clarity" value="5" id="clarity5">
+                            <label for="clarity5">5</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group rating-group">
+                    <label>How useful would this be to you personally? *</label>
+                    <div class="rating-scale">
+                        <div class="rating-labels">
+                            <span>Not useful</span>
+                            <span>Very useful</span>
+                        </div>
+                        <div class="rating-options">
+                            <input type="radio" name="usefulness" value="1" id="useful1" required>
+                            <label for="useful1">1</label>
+                            <input type="radio" name="usefulness" value="2" id="useful2">
+                            <label for="useful2">2</label>
+                            <input type="radio" name="usefulness" value="3" id="useful3">
+                            <label for="useful3">3</label>
+                            <input type="radio" name="usefulness" value="4" id="useful4">
+                            <label for="useful4">4</label>
+                            <input type="radio" name="usefulness" value="5" id="useful5">
+                            <label for="useful5">5</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group rating-group">
+                    <label>How excited are you about this idea? *</label>
+                    <div class="rating-scale">
+                        <div class="rating-labels">
+                            <span>Meh</span>
+                            <span>Let's build it!</span>
+                        </div>
+                        <div class="rating-options">
+                            <input type="radio" name="excitement" value="1" id="excited1" required>
+                            <label for="excited1">1</label>
+                            <input type="radio" name="excitement" value="2" id="excited2">
+                            <label for="excited2">2</label>
+                            <input type="radio" name="excitement" value="3" id="excited3">
+                            <label for="excited3">3</label>
+                            <input type="radio" name="excitement" value="4" id="excited4">
+                            <label for="excited4">4</label>
+                            <input type="radio" name="excitement" value="5" id="excited5">
+                            <label for="excited5">5</label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 2: Yes/No Questions -->
+            <section class="form-section">
+                <h2>Quick Hits</h2>
+
+                <div class="form-group yesno-group">
+                    <label>Does this solve a real problem you've experienced? *</label>
+                    <div class="yesno-options">
+                        <input type="radio" name="realProblem" value="Yes" id="realYes" required>
+                        <label for="realYes">Yes</label>
+                        <input type="radio" name="realProblem" value="No" id="realNo">
+                        <label for="realNo">No</label>
+                    </div>
+                </div>
+
+                <div class="form-group yesno-group">
+                    <label>Would you use this regularly if it existed? *</label>
+                    <div class="yesno-options">
+                        <input type="radio" name="wouldUse" value="Yes" id="useYes" required>
+                        <label for="useYes">Yes</label>
+                        <input type="radio" name="wouldUse" value="No" id="useNo">
+                        <label for="useNo">No</label>
+                    </div>
+                </div>
+
+                <div class="form-group yesno-group">
+                    <label>Is this worth prioritizing over current projects? *</label>
+                    <div class="yesno-options">
+                        <input type="radio" name="priority" value="Yes" id="priorityYes" required>
+                        <label for="priorityYes">Yes</label>
+                        <input type="radio" name="priority" value="No" id="priorityNo">
+                        <label for="priorityNo">No</label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 3: Constructive Feedback -->
+            <section class="form-section">
+                <h2>Constructive Feedback</h2>
+
+                <div class="form-group">
+                    <label for="bestThing">What's the BEST thing about this idea? *</label>
+                    <textarea id="bestThing" name="bestThing" required rows="2" maxlength="250" placeholder="Be specific about what you like"></textarea>
+                    <span class="char-count"><span id="bestCount">0</span>/250</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="improve">What's ONE thing you'd change or improve? *</label>
+                    <textarea id="improve" name="improve" required rows="2" maxlength="250" placeholder="One constructive suggestion"></textarea>
+                    <span class="char-count"><span id="improveCount">0</span>/250</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="useCase">If you wouldn't use this, what's a use case for someone else?</label>
+                    <textarea id="useCase" name="useCase" rows="2" maxlength="250" placeholder="Think of other potential users or scenarios"></textarea>
+                    <span class="char-count"><span id="useCaseCount">0</span>/250</span>
+                </div>
+            </section>
+
+            <button type="submit" class="btn-submit">
+                <span class="btn-text">Submit Feedback</span>
+                <span class="btn-loading" hidden>Submitting...</span>
+            </button>
+        </form>
+
+        <div id="successMessage" class="success-message" hidden>
+            <div class="success-icon">&#10003;</div>
+            <h2>Feedback Submitted!</h2>
+            <p>Your review has been recorded. Thanks for the honest feedback!</p>
+            <button onclick="location.reload()" class="btn-secondary">Review Another Project</button>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script src="review.js"></script>
+</body>
+</html>
