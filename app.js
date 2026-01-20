@@ -421,11 +421,11 @@ async function syncToCloud() {
         } else {
             const errorText = await response.text();
             console.error('Cloud sync failed with status:', response.status, errorText);
-            alert('Cloud sync failed: ' + response.status + ' - Check console for details');
+            // Log to console only - don't interrupt user with alerts
         }
     } catch (error) {
         console.error('Cloud sync error:', error);
-        alert('Cloud sync error: ' + error.message);
+        // Log to console only - don't interrupt user with alerts
     }
 }
 

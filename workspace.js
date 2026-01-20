@@ -42,11 +42,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Setup visibility-based refresh and periodic polling
 function setupVisibilityAndPolling() {
-    // Sync when tab becomes visible
+    // Sync when tab becomes visible (silent refresh, no scroll reset)
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             console.log('Tab became visible, syncing...');
-            forceRefreshFromCloud();
+            silentRefreshFromCloud();
         }
     });
 
@@ -60,11 +60,13 @@ function startPolling() {
     pollingInterval = setInterval(() => {
         if (document.visibilityState === 'visible' && !syncInProgress) {
             console.log('Periodic sync...');
-            syncFromCloud().then(() => {
+            syncFromCloud(true).then(() => {
                 renderProjectList();
                 if (currentProject) {
                     const updated = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
                     if (updated) {
+                        // Update currentProject reference without re-selecting (no scroll)
+                        currentProject = updated;
                         renderExistingFeedback();
                     }
                 }
@@ -277,11 +279,11 @@ async function syncToCloud() {
         } else {
             const errorText = await response.text();
             console.error('Cloud sync failed with status:', response.status, errorText);
-            alert('Cloud sync failed: ' + response.status + ' - Check console for details');
+            // Don't show alert for background syncs - only log to console
         }
     } catch (error) {
         console.error('Cloud sync error:', error);
-        alert('Cloud sync error: ' + error.message);
+        // Don't show alert for background syncs - only log to console
     } finally {
         syncInProgress = false;
     }
@@ -373,6 +375,28 @@ function ensureVersionFields(item) {
     if (!item._version) item._version = 1;
     if (!item._lastModified) item._lastModified = item.timestamp || new Date().toISOString();
     return item;
+}
+
+// Silent refresh from cloud (no scroll reset, no alerts)
+async function silentRefreshFromCloud() {
+    if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) return;
+
+    try {
+        await syncFromCloud(true);
+        localStorage.setItem('projectCacheTimestamp', Date.now().toString());
+        renderProjectList();
+
+        // Update current project data without scrolling
+        if (currentProject) {
+            const updated = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
+            if (updated) {
+                currentProject = updated;
+                renderExistingFeedback();
+            }
+        }
+    } catch (err) {
+        console.log('Silent refresh failed:', err);
+    }
 }
 
 // Force refresh from cloud (bypasses cache)
