@@ -10,8 +10,8 @@ let allFeedback = [];
 let allTasks = {};
 let completedProjects = {};
 
-// Cache settings
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// Cache settings - short duration to ensure fresh data
+const CACHE_DURATION = 0; // Always sync on page load for fresh data
 
 // ==========================================
 // Load Dashboard Data
@@ -23,25 +23,20 @@ async function loadDashboardData() {
     // Load from localStorage first
     loadFromLocalStorage();
 
-    // Render immediately with local data
+    // Render immediately with local data (fast initial paint)
     renderDashboard();
 
-    // Check if cache is expired
-    const now = Date.now();
-    const cachedTimestamp = parseInt(localStorage.getItem('projectCacheTimestamp') || '0');
-
-    if (JSONBIN_BIN_ID && JSONBIN_API_KEY && (now - cachedTimestamp > CACHE_DURATION)) {
-        console.log('Dashboard: Cache expired, fetching from cloud...');
+    // ALWAYS sync from cloud on page load to get latest data
+    // This ensures visitors see up-to-date projects
+    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
+        console.log('Dashboard: Syncing from cloud...');
         try {
             await syncFromCloud();
-            localStorage.setItem('projectCacheTimestamp', now.toString());
             console.log('Dashboard: Cloud sync complete. Projects:', allProjects.length);
             renderDashboard();
         } catch (err) {
             console.log('Dashboard: Cloud sync failed:', err);
         }
-    } else {
-        console.log('Dashboard: Using cached data');
     }
 }
 

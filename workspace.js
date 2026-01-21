@@ -99,12 +99,23 @@ async function loadAllData() {
     // Migrate existing projects (add status and tags if missing)
     migrateExistingProjects();
 
-    // Render immediately with local data
+    // Render immediately with local data (fast initial paint)
     renderProjectList();
 
-    // OPTIMIZATION: Don't auto-sync from cloud on page load
-    // This saves API requests - users click Refresh button when needed
-    console.log('Loaded from localStorage. Click Refresh to sync from cloud.');
+    // ALWAYS sync from cloud on page load to get latest data
+    // This ensures visitors see up-to-date projects
+    // (No continuous polling - just on load and user actions)
+    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
+        console.log('Syncing from cloud on page load...');
+        try {
+            await syncFromCloud();
+            migrateExistingProjects();
+            renderProjectList();
+            console.log('Cloud sync complete. Projects:', allProjects.filter(p => !p._deletedAt).length);
+        } catch (err) {
+            console.log('Cloud sync failed, using local data:', err);
+        }
+    }
 
     dataLoaded = true;
 }

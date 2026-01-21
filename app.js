@@ -538,9 +538,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Clean up any duplicates first
     cleanupDuplicates();
 
-    // DON'T auto-sync from cloud on page load - saves API requests
-    // Users can click Refresh in workspace to get latest data
-    // Only sync when submitting new data
+    // Sync from cloud on page load to get latest data
+    // This ensures the project dropdown (if any) has current projects
+    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
+        await syncFromCloud();
+    }
 
     setupProjectForm();
     setupFeedbackForm();
