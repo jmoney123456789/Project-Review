@@ -13,6 +13,7 @@ let completedProjects = {};
 // Firebase real-time listeners
 let projectsListener = null;
 let feedbackListener = null;
+let tasksListener = null;
 let dataLoaded = false;
 
 // ==========================================
@@ -37,18 +38,36 @@ async function loadDashboardData() {
     setupFirebaseListeners(); // Real-time sync!
 }
 
+// Sanitize keys for Firebase (no ., #, $, [, ])
+function sanitizeFirebaseKey(key) {
+    return key.replace(/[.#$\[\]]/g, '_');
+}
+
 // Fetch from Firebase as the single source of truth
 async function fetchFromFirebaseAsSourceOfTruth() {
     const snapshot = await database.ref('/').once('value');
-    const data = snapshot.val() || { projects: {}, feedback: {} };
+    const data = snapshot.val() || { projects: {}, feedback: {}, tasks: {} };
 
     // Convert Firebase objects to arrays
     const projectsObj = data.projects || {};
     const feedbackObj = data.feedback || {};
+    const tasksObj = data.tasks || {};
 
     // Firebase data completely replaces local data
     allProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
     allFeedback = Object.values(feedbackObj).filter(f => !f._deletedAt);
+
+    // Load tasks from Firebase - convert from {projectKey: {tasks: [...]}} to {projectName: [...]}
+    allTasks = {};
+    Object.keys(tasksObj).forEach(key => {
+        // Find the original project name (key is sanitized)
+        const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+        const projectName = project ? project.projectName : key;
+        if (tasksObj[key] && tasksObj[key].tasks) {
+            allTasks[projectName] = tasksObj[key].tasks;
+        }
+    });
+    localStorage.setItem('projectTasks', JSON.stringify(allTasks));
 
     // Cache and restore images
     const imageCache = JSON.parse(localStorage.getItem('projectImageCache') || '{}');
@@ -70,6 +89,8 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     // Save to localStorage as cache
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+    console.log('Dashboard: Firebase data synced -', allProjects.length, 'projects,', Object.keys(allTasks).length, 'task lists');
 }
 
 // Setup Firebase real-time listeners
@@ -116,6 +137,30 @@ function setupFirebaseListeners() {
         localStorage.setItem('projectReviewData', JSON.stringify(combined));
 
         console.log('Dashboard: Real-time update - Feedback changed, now have', allFeedback.length);
+        renderDashboard();
+    });
+
+    // Listen for tasks changes
+    tasksListener = database.ref('tasks').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const tasksObj = snapshot.val() || {};
+
+        // Convert from {projectKey: {tasks: [...]}} to {projectName: [...]}
+        allTasks = {};
+        Object.keys(tasksObj).forEach(key => {
+            // Find the original project name (key is sanitized)
+            const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+            const projectName = project ? project.projectName : key;
+            if (tasksObj[key] && tasksObj[key].tasks) {
+                allTasks[projectName] = tasksObj[key].tasks;
+            }
+        });
+
+        // Update localStorage
+        localStorage.setItem('projectTasks', JSON.stringify(allTasks));
+
+        console.log('Dashboard: Real-time update - Tasks changed, now have', Object.keys(allTasks).length, 'task lists');
         renderDashboard();
     });
 

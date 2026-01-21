@@ -40,6 +40,8 @@ let tagFilters = []; // Array of selected tags
 // Firebase real-time listeners
 let projectsListener = null;
 let feedbackListener = null;
+let tasksListener = null;
+let notesListener = null;
 
 // ==========================================
 // Image Cache System
@@ -203,15 +205,41 @@ async function loadAllData() {
 // Fetch from Firebase as the single source of truth
 async function fetchFromFirebaseAsSourceOfTruth() {
     const snapshot = await database.ref('/').once('value');
-    const data = snapshot.val() || { projects: {}, feedback: {} };
+    const data = snapshot.val() || { projects: {}, feedback: {}, tasks: {}, notes: {} };
 
     // Convert Firebase objects to arrays
     const projectsObj = data.projects || {};
     const feedbackObj = data.feedback || {};
+    const tasksObj = data.tasks || {};
+    const notesObj = data.notes || {};
 
     // Firebase data completely replaces local data for projects/feedback
     allProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
     allFeedback = Object.values(feedbackObj).filter(f => !f._deletedAt);
+
+    // Load tasks from Firebase - convert from {projectKey: {tasks: [...]}} to {projectName: [...]}
+    allTasks = {};
+    Object.keys(tasksObj).forEach(key => {
+        // Find the original project name (key is sanitized)
+        const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+        const projectName = project ? project.projectName : key;
+        if (tasksObj[key] && tasksObj[key].tasks) {
+            allTasks[projectName] = tasksObj[key].tasks;
+        }
+    });
+    localStorage.setItem('projectTasks', JSON.stringify(allTasks));
+
+    // Load notes from Firebase - convert from {projectKey: {content: "..."}} to {projectName: "..."}
+    allNotes = {};
+    Object.keys(notesObj).forEach(key => {
+        // Find the original project name (key is sanitized)
+        const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+        const projectName = project ? project.projectName : key;
+        if (notesObj[key] && notesObj[key].content !== undefined) {
+            allNotes[projectName] = notesObj[key].content;
+        }
+    });
+    localStorage.setItem('projectNotes', JSON.stringify(allNotes));
 
     // Cache images locally (but Firebase data is truth)
     allProjects.forEach(p => {
@@ -233,7 +261,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
 
-    console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback');
+    console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback,', Object.keys(allTasks).length, 'task lists,', Object.keys(allNotes).length, 'notes');
 }
 
 // Setup Firebase real-time listeners
@@ -297,6 +325,62 @@ function setupFirebaseListeners() {
         // Update feedback display if viewing a project
         if (currentProject) {
             renderExistingFeedback();
+        }
+    });
+
+    // Listen for tasks changes
+    tasksListener = database.ref('tasks').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const tasksObj = snapshot.val() || {};
+
+        // Convert from {projectKey: {tasks: [...]}} to {projectName: [...]}
+        allTasks = {};
+        Object.keys(tasksObj).forEach(key => {
+            // Find the original project name (key is sanitized)
+            const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+            const projectName = project ? project.projectName : key;
+            if (tasksObj[key] && tasksObj[key].tasks) {
+                allTasks[projectName] = tasksObj[key].tasks;
+            }
+        });
+
+        // Update localStorage
+        localStorage.setItem('projectTasks', JSON.stringify(allTasks));
+
+        console.log('Real-time update: Tasks changed, now have', Object.keys(allTasks).length, 'task lists');
+
+        // Update tasks display if viewing a project
+        if (currentProject) {
+            renderTasks();
+        }
+    });
+
+    // Listen for notes changes
+    notesListener = database.ref('notes').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const notesObj = snapshot.val() || {};
+
+        // Convert from {projectKey: {content: "..."}} to {projectName: "..."}
+        allNotes = {};
+        Object.keys(notesObj).forEach(key => {
+            // Find the original project name (key is sanitized)
+            const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+            const projectName = project ? project.projectName : key;
+            if (notesObj[key] && notesObj[key].content !== undefined) {
+                allNotes[projectName] = notesObj[key].content;
+            }
+        });
+
+        // Update localStorage
+        localStorage.setItem('projectNotes', JSON.stringify(allNotes));
+
+        console.log('Real-time update: Notes changed, now have', Object.keys(allNotes).length, 'notes');
+
+        // Update notes display if viewing a project
+        if (currentProject) {
+            loadNotes();
         }
     });
 
@@ -503,6 +587,56 @@ async function deleteFeedbackFromFirebase(projectName) {
         }
     } catch (error) {
         console.error('Firebase feedback delete error:', error);
+    }
+}
+
+// Sync tasks for a project to Firebase
+async function syncTasksToFirebase(projectName, tasks) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`tasks/${key}`).set({
+            tasks: tasks,
+            _lastModified: new Date().toISOString()
+        });
+        console.log('Synced tasks to Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase tasks sync error:', error);
+    }
+}
+
+// Sync notes for a project to Firebase
+async function syncNotesToFirebase(projectName, notes) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`notes/${key}`).set({
+            content: notes,
+            _lastModified: new Date().toISOString()
+        });
+        console.log('Synced notes to Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase notes sync error:', error);
+    }
+}
+
+// Delete tasks from Firebase when project is deleted
+async function deleteTasksFromFirebase(projectName) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`tasks/${key}`).remove();
+        console.log('Deleted tasks from Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase tasks delete error:', error);
+    }
+}
+
+// Delete notes from Firebase when project is deleted
+async function deleteNotesFromFirebase(projectName) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`notes/${key}`).remove();
+        console.log('Deleted notes from Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase notes delete error:', error);
     }
 }
 
@@ -1060,6 +1194,9 @@ function saveNotes() {
     allNotes[currentProject.projectName] = notes;
     localStorage.setItem('projectNotes', JSON.stringify(allNotes));
 
+    // Sync to Firebase (non-blocking)
+    syncNotesToFirebase(currentProject.projectName, notes);
+
     document.getElementById('pvNotesText').textContent = notes || 'No notes yet. Click Edit to add notes about this project.';
     document.getElementById('pvNotesContent').hidden = false;
     document.getElementById('pvNotesEdit').hidden = true;
@@ -1206,6 +1343,9 @@ function getProjectTasks() {
 function saveProjectTasks(tasks) {
     allTasks[currentProject.projectName] = tasks;
     localStorage.setItem('projectTasks', JSON.stringify(allTasks));
+
+    // Sync to Firebase (non-blocking)
+    syncTasksToFirebase(currentProject.projectName, tasks);
 }
 
 function renderTasks() {
@@ -1509,6 +1649,8 @@ async function confirmDeleteProject() {
     // Delete from Firebase
     await deleteProjectFromFirebase(projectName);
     await deleteFeedbackFromFirebase(projectName);
+    await deleteTasksFromFirebase(projectName);
+    await deleteNotesFromFirebase(projectName);
 
     // Re-render
     renderProjectList();
