@@ -724,6 +724,12 @@ function setupEventListeners() {
         if (e.key === 'Enter') addTask();
     });
 
+    // Image upload in gallery
+    document.getElementById('addImagesBtn')?.addEventListener('click', () => {
+        document.getElementById('galleryFileInput')?.click();
+    });
+    document.getElementById('galleryFileInput')?.addEventListener('change', handleGalleryUpload);
+
     // Keyboard navigation for gallery
     document.addEventListener('keydown', (e) => {
         if (!currentProject || !currentProject.images?.length) return;
@@ -1054,6 +1060,9 @@ function populateProjectView(project) {
 
     // Setup gallery
     setupGallery(project.images || []);
+
+    // Update image count display
+    updateImageCount();
 }
 
 // Update project status
@@ -1163,6 +1172,126 @@ function navigateGallery(direction) {
     if (newIndex < 0) newIndex = images.length - 1;
     if (newIndex >= images.length) newIndex = 0;
     selectImage(newIndex);
+}
+
+// ==========================================
+// Image Upload from Workspace
+// ==========================================
+async function handleGalleryUpload(e) {
+    if (!currentProject) {
+        alert('Please select a project first');
+        return;
+    }
+
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const maxImages = window.IMAGE_CONFIG?.maxImages || 50;
+    const currentImages = currentProject.images || [];
+
+    // Check if we'd exceed the limit
+    if (currentImages.length + files.length > maxImages) {
+        alert(`Maximum ${maxImages} images allowed. You can add ${maxImages - currentImages.length} more.`);
+        e.target.value = '';
+        return;
+    }
+
+    // Validate files
+    const validFiles = [];
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+            alert(`"${file.name}" is not an image.`);
+            continue;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            alert(`"${file.name}" is too large. Maximum size is 5MB.`);
+            continue;
+        }
+        validFiles.push(file);
+    }
+
+    if (validFiles.length === 0) {
+        e.target.value = '';
+        return;
+    }
+
+    // Show loading state
+    const addBtn = document.getElementById('addImagesBtn');
+    const originalText = addBtn.innerHTML;
+    addBtn.innerHTML = '<span class="btn-icon">...</span><span class="btn-label">Uploading...</span>';
+    addBtn.disabled = true;
+
+    try {
+        // Compress images
+        console.log('Compressing', validFiles.length, 'images...');
+        const compressedImages = await window.compressImages(validFiles);
+        console.log('Compressed', compressedImages.length, 'images');
+
+        // Add to project
+        const newImages = [...currentImages, ...compressedImages];
+        const now = new Date().toISOString();
+
+        const updatedProject = {
+            ...currentProject,
+            images: newImages,
+            _lastModified: now,
+            _version: (currentProject._version || 0) + 1
+        };
+
+        // Update in allProjects
+        allProjects = allProjects.map(p => {
+            if (p.projectName === currentProject.projectName) {
+                return updatedProject;
+            }
+            return p;
+        });
+
+        // Update currentProject reference
+        currentProject = updatedProject;
+
+        // Save to localStorage
+        const combined = [...allProjects, ...allFeedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+        // Cache images locally
+        cacheProjectImages(currentProject.projectName, newImages);
+
+        // Sync to Firebase
+        await syncProjectToFirebase(updatedProject);
+
+        // Log the change
+        const user = getCurrentUser();
+        logChange(currentProject.projectName, user, 'updated', `Added ${compressedImages.length} screenshot(s)`);
+
+        // Refresh gallery
+        setupGallery(newImages);
+        updateImageCount();
+
+        console.log('Images added successfully. Total:', newImages.length);
+
+    } catch (error) {
+        console.error('Image upload error:', error);
+        alert('Failed to upload images. Please try again.');
+    }
+
+    // Reset
+    addBtn.innerHTML = originalText;
+    addBtn.disabled = false;
+    e.target.value = '';
+}
+
+function updateImageCount() {
+    const countEl = document.getElementById('imageCount');
+    if (!countEl) return;
+
+    const count = currentProject?.images?.length || 0;
+    const maxImages = window.IMAGE_CONFIG?.maxImages || 50;
+
+    if (count > 0) {
+        countEl.textContent = `${count} / ${maxImages}`;
+    } else {
+        countEl.textContent = '';
+    }
 }
 
 // ==========================================

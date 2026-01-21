@@ -31,6 +31,97 @@ const JSONBIN_BIN_ID = null;
 const JSONBIN_API_KEY = null;
 
 // ==========================================
+// Image Compression Utility
+// ==========================================
+// Compresses images to reduce storage size while maintaining quality
+// This allows storing 30-50 screenshots per project without hitting limits
+
+const IMAGE_CONFIG = {
+    maxWidth: 1920,      // Max width in pixels
+    maxHeight: 1080,     // Max height in pixels
+    quality: 0.8,        // JPEG quality (0.8 = 80%)
+    maxFileSize: 5 * 1024 * 1024,  // 5MB max per original file
+    maxImages: 50        // Max images per project
+};
+
+/**
+ * Compress an image file to reduce storage size
+ * @param {File} file - The image file to compress
+ * @returns {Promise<string>} - Base64 data URL of compressed image
+ */
+async function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                // Calculate new dimensions maintaining aspect ratio
+                let { width, height } = img;
+
+                if (width > IMAGE_CONFIG.maxWidth) {
+                    height = (height * IMAGE_CONFIG.maxWidth) / width;
+                    width = IMAGE_CONFIG.maxWidth;
+                }
+                if (height > IMAGE_CONFIG.maxHeight) {
+                    width = (width * IMAGE_CONFIG.maxHeight) / height;
+                    height = IMAGE_CONFIG.maxHeight;
+                }
+
+                // Create canvas and draw resized image
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Convert to compressed JPEG
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', IMAGE_CONFIG.quality);
+
+                // Log compression results
+                const originalSize = e.target.result.length;
+                const compressedSize = compressedDataUrl.length;
+                const savings = Math.round((1 - compressedSize / originalSize) * 100);
+                console.log(`Image compressed: ${Math.round(originalSize/1024)}KB → ${Math.round(compressedSize/1024)}KB (${savings}% smaller)`);
+
+                resolve(compressedDataUrl);
+            };
+            img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+    });
+}
+
+/**
+ * Compress multiple image files
+ * @param {File[]} files - Array of image files
+ * @returns {Promise<string[]>} - Array of base64 data URLs
+ */
+async function compressImages(files) {
+    const promises = files.map(file => {
+        if (file.type.startsWith('image/')) {
+            return compressImage(file).catch(err => {
+                console.error('Compression failed for', file.name, err);
+                return null;
+            });
+        }
+        return Promise.resolve(null);
+    });
+
+    const results = await Promise.all(promises);
+    return results.filter(url => url !== null);
+}
+
+// Make compression functions globally available
+window.compressImage = compressImage;
+window.compressImages = compressImages;
+window.IMAGE_CONFIG = IMAGE_CONFIG;
+
+// ==========================================
 // Character Counter
 // ==========================================
 function setupCharCounter(inputId, countId, maxLength) {
@@ -104,8 +195,8 @@ function setupFileUpload() {
 
     function handleFiles(files) {
         Array.from(files).forEach(file => {
-            if (uploadedFiles.length >= 5) {
-                alert('Maximum 5 images allowed');
+            if (uploadedFiles.length >= IMAGE_CONFIG.maxImages) {
+                alert(`Maximum ${IMAGE_CONFIG.maxImages} images allowed`);
                 return;
             }
 
@@ -115,8 +206,8 @@ function setupFileUpload() {
                 return;
             }
 
-            // Check file size (max 5MB)
-            if (file.size > 5 * 1024 * 1024) {
+            // Check file size (max 5MB before compression)
+            if (file.size > IMAGE_CONFIG.maxFileSize) {
                 alert(`File "${file.name}" is too large. Maximum size is 5MB.`);
                 return;
             }
@@ -294,23 +385,11 @@ function setupProjectForm() {
                 _lastModified: now
             };
 
-            // Convert images to base64 for storage
+            // Convert and compress images for storage
             const files = window.getUploadedFiles ? window.getUploadedFiles() : [];
-            const imagePromises = files.map(file => {
-                return new Promise((resolve) => {
-                    if (file.type.startsWith('image/')) {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result);
-                        reader.onerror = () => resolve(null);
-                        reader.readAsDataURL(file);
-                    } else {
-                        resolve(null);
-                    }
-                });
-            });
-
-            const imageDataUrls = await Promise.all(imagePromises);
-            data.images = imageDataUrls.filter(url => url !== null);
+            console.log('Compressing', files.length, 'images...');
+            data.images = await compressImages(files);
+            console.log('Compression complete:', data.images.length, 'images ready');
             data.attachments = files.map(f => f.name).join(', ');
 
             // Debug: Log images being saved

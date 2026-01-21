@@ -376,6 +376,46 @@
     object-fit: cover;
 }
 
+/* Gallery Upload */
+.pv-gallery-upload {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid var(--glass-border);
+}
+
+.btn-add-images {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-add-images:hover {
+    background: var(--white);
+    color: var(--black);
+    border-color: var(--white);
+}
+
+.btn-add-images .btn-icon {
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.image-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 /* Notes Panel */
 .pv-notes-panel {
     background: var(--glass-bg);
