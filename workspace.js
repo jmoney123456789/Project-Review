@@ -41,6 +41,7 @@ let progressFieldsDebounceTimer = null;
 // Filter state for categories/tags
 let statusFilter = 'all'; // 'all', 'in_progress', 'completed', 'archived'
 let tagFilters = []; // Array of selected tags
+let sortOption = 'date_desc'; // 'date_desc', 'date_asc', 'name_asc', 'name_desc', 'edited_desc'
 
 // Firebase real-time listeners
 let projectsListener = null;
@@ -191,6 +192,7 @@ async function loadAllData() {
     allNotes = JSON.parse(localStorage.getItem('projectNotes') || '{}');
     allProgressTabs = JSON.parse(localStorage.getItem('projectProgressTabs') || '{}');
     allProjectFiles = JSON.parse(localStorage.getItem('projectFiles') || '{}');
+    sortOption = localStorage.getItem('projectSortOption') || 'date_desc';
     loadChangesLog();
 
     // FIREBASE IS SOURCE OF TRUTH - fetch from Firebase FIRST
@@ -1047,8 +1049,12 @@ function renderProjectList() {
     // Render tag filter buttons
     renderTagFilters(activeProjects);
 
-    // Get filtered projects based on current filters
-    const filteredProjects = getFilteredProjects(activeProjects);
+    // Get filtered projects based on current filters, then sort
+    const filteredProjects = sortProjects(getFilteredProjects(activeProjects));
+
+    // Update sort dropdown to reflect current selection
+    const sortDropdown = document.getElementById('sortSelect');
+    if (sortDropdown) sortDropdown.value = sortOption;
 
     if (activeProjects.length === 0) {
         container.innerHTML = `
@@ -1229,6 +1235,49 @@ function setStatusFilter(status) {
     const dropdown = document.getElementById('statusFilter');
     if (dropdown) dropdown.value = status;
     renderProjectList();
+}
+
+// Set sort option
+function setSortOption(option) {
+    sortOption = option;
+    localStorage.setItem('projectSortOption', option);
+    // Update dropdown if it exists
+    const dropdown = document.getElementById('sortSelect');
+    if (dropdown) dropdown.value = option;
+    renderProjectList();
+}
+
+// Sort projects based on current sort option
+function sortProjects(projects) {
+    const sorted = [...projects];
+
+    switch (sortOption) {
+        case 'date_desc':
+            // Newest first (by timestamp)
+            sorted.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+            break;
+        case 'date_asc':
+            // Oldest first
+            sorted.sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+            break;
+        case 'name_asc':
+            // A-Z
+            sorted.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+            break;
+        case 'name_desc':
+            // Z-A
+            sorted.sort((a, b) => (b.projectName || '').localeCompare(a.projectName || ''));
+            break;
+        case 'edited_desc':
+            // Most recently edited first
+            sorted.sort((a, b) => new Date(b._lastModified || b.timestamp || 0) - new Date(a._lastModified || a.timestamp || 0));
+            break;
+        default:
+            // Default to newest first
+            sorted.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    }
+
+    return sorted;
 }
 
 // Clear all filters

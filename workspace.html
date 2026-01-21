@@ -31,14 +31,26 @@
             </div>
             <!-- Filter Controls -->
             <div class="sidebar-filters">
-                <div class="filter-group">
-                    <label for="statusFilter">Status</label>
-                    <select id="statusFilter" onchange="setStatusFilter(this.value)">
-                        <option value="all">All Status</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="completed">Completed</option>
-                        <option value="archived">Archived</option>
-                    </select>
+                <div class="filter-row">
+                    <div class="filter-group filter-group-half">
+                        <label for="statusFilter">Status</label>
+                        <select id="statusFilter" onchange="setStatusFilter(this.value)">
+                            <option value="all">All Status</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="archived">Archived</option>
+                        </select>
+                    </div>
+                    <div class="filter-group filter-group-half">
+                        <label for="sortSelect">Sort By</label>
+                        <select id="sortSelect" onchange="setSortOption(this.value)">
+                            <option value="date_desc">Newest First</option>
+                            <option value="date_asc">Oldest First</option>
+                            <option value="name_asc">Name A-Z</option>
+                            <option value="name_desc">Name Z-A</option>
+                            <option value="edited_desc">Recently Edited</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="filter-group" id="tagFiltersContainer">
                     <label>Tags</label>

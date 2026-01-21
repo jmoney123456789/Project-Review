@@ -1397,8 +1397,20 @@
     background: var(--bg-card);
 }
 
+.sidebar-filters .filter-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
 .sidebar-filters .filter-group {
     margin-bottom: 0.75rem;
+}
+
+.sidebar-filters .filter-group-half {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
 }
 
 .sidebar-filters .filter-group:last-child {
