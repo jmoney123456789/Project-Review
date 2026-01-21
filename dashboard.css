@@ -1,12 +1,12 @@
 /* ==========================================
-   DASHBOARD - List View Styles
+   DASHBOARD - Solenne Style List View
    ========================================== */
 
 .dashboard-container {
     max-width: 100%;
     margin: 0 auto;
     padding: 1.5rem 1.5rem;
-    background: var(--gradient-subtle);
+    background: var(--black);
     min-height: calc(100vh - 52px);
 }
 
@@ -16,12 +16,9 @@
 
 .dashboard-header h1 {
     font-size: 1.5rem;
-    font-weight: 500;
-    color: var(--text-primary);
-    background: var(--gradient-accent);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--white);
 }
 
 /* Empty State */
@@ -49,17 +46,16 @@
 
 /* Dashboard Item (contains row + feedback) */
 .dashboard-item {
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(36, 36, 36, 0.8) 100%);
-    border: 1px solid var(--border);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius);
     overflow: hidden;
     transition: var(--transition);
-    box-shadow: var(--shadow-soft);
+    box-shadow: var(--glass-shadow);
 }
 
 .dashboard-item:hover {
-    border-color: rgba(99, 102, 241, 0.3);
-    box-shadow: var(--shadow-glow);
+    border-color: var(--grey-mid);
 }
 
 .dashboard-item.completed {
@@ -83,7 +79,7 @@
 .row-checkbox {
     width: 24px;
     height: 24px;
-    border: 2px solid var(--border);
+    border: 2px solid var(--grey-mid);
     border-radius: 4px;
     cursor: pointer;
     flex-shrink: 0;
@@ -94,13 +90,13 @@
 }
 
 .row-checkbox:hover {
-    border-color: var(--accent);
+    border-color: var(--white);
 }
 
 .row-checkbox.checked {
-    background: var(--success);
-    border-color: var(--success);
-    color: white;
+    background: var(--white);
+    border-color: var(--white);
+    color: var(--black);
     font-size: 0.8rem;
 }
 
@@ -108,14 +104,13 @@
 .row-thumb {
     width: 56px;
     height: 42px;
-    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-input) 100%);
+    background: linear-gradient(135deg, var(--black-lighter) 0%, var(--black) 100%);
     border-radius: 6px;
     overflow: hidden;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .row-thumb img {
@@ -151,10 +146,10 @@
 }
 
 .row-type {
-    background: var(--accent-dim);
-    color: var(--accent);
+    background: var(--grey-dark);
+    color: var(--grey-light);
     padding: 0.1rem 0.4rem;
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 /* Stats (right side) */
@@ -196,18 +191,17 @@
    ========================================== */
 
 .feedback-preview {
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--glass-border);
     padding: 1rem 1.25rem;
-    background: linear-gradient(180deg, var(--bg-card) 0%, rgba(36, 36, 36, 0.6) 100%);
+    background: rgba(0, 0, 0, 0.3);
 }
 
 .feedback-entry {
     padding: 0.75rem;
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(26, 26, 26, 0.9) 100%);
-    border: 1px solid var(--border);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius-sm);
     margin-bottom: 0.75rem;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 .feedback-entry:last-child {
@@ -230,19 +224,19 @@
 
 .feedback-author {
     font-weight: 600;
-    font-size: 0.8rem;
-    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
     border-radius: 12px;
 }
 
 .feedback-author.jason {
-    background: var(--accent-dim);
-    color: var(--accent);
+    background: var(--white);
+    color: var(--black);
 }
 
 .feedback-author.ash {
-    background: rgba(159, 122, 234, 0.15);
-    color: var(--accent-purple);
+    background: var(--grey-mid);
+    color: var(--black);
 }
 
 .feedback-entry-date {
@@ -259,10 +253,10 @@
 .score-pill {
     font-size: 0.7rem;
     padding: 0.2rem 0.5rem;
-    background: linear-gradient(135deg, var(--bg-input) 0%, rgba(42, 42, 42, 0.8) 100%);
+    background: rgba(0, 0, 0, 0.4);
     border-radius: 10px;
-    color: var(--text-secondary);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--grey-light);
+    border: 1px solid var(--glass-border);
 }
 
 .feedback-entry-badges {
