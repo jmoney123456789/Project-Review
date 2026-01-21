@@ -1115,11 +1115,74 @@
 @media (max-width: 900px) {
     .workspace-container {
         grid-template-columns: 1fr;
+        position: relative;
     }
 
+    /* Hide sidebars by default on mobile - shown via tab navigation */
     .sidebar-left,
     .sidebar-right {
         display: none;
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 60px;
+        z-index: 100;
+        border: none;
+    }
+
+    .sidebar-left.mobile-active,
+    .sidebar-right.mobile-active {
+        display: flex;
+    }
+
+    .main-content {
+        display: none;
+        padding-bottom: 70px;
+    }
+
+    .main-content.mobile-active {
+        display: block;
+    }
+
+    /* Mobile Tab Navigation */
+    .mobile-tab-nav {
+        display: flex !important;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border);
+        z-index: 200;
+    }
+
+    .mobile-tab {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        cursor: pointer;
+        transition: var(--transition);
+    }
+
+    .mobile-tab-icon {
+        font-size: 1.25rem;
+    }
+
+    .mobile-tab.active {
+        color: var(--accent);
+    }
+
+    .mobile-tab:hover {
+        color: var(--text-primary);
     }
 
     .project-media-row {
@@ -1142,6 +1205,36 @@
     .pv-yesno-row {
         flex-direction: column;
     }
+
+    /* Adjust header for mobile */
+    .workspace-header .header-nav {
+        display: none;
+    }
+
+    .workspace-header {
+        padding: 0.75rem 1rem;
+    }
+
+    /* Project view adjustments */
+    .project-view-header {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .pv-title-row h1 {
+        font-size: 1.25rem;
+    }
+
+    .pv-status-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}
+
+/* Hide mobile nav on desktop */
+.mobile-tab-nav {
+    display: none;
 }
 
 /* ==========================================

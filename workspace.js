@@ -95,7 +95,60 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     setupDeleteModal();
     setupFirebaseListeners(); // Real-time sync - no refresh needed!
+    setupMobileNav(); // Mobile navigation
 });
+
+// ==========================================
+// Mobile Navigation
+// ==========================================
+function setupMobileNav() {
+    // Set initial state on mobile
+    if (window.innerWidth <= 900) {
+        switchMobileTab('projects'); // Start with projects list on mobile
+    }
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 900) {
+            // Reset to desktop view
+            document.querySelector('.sidebar-left')?.classList.remove('mobile-active');
+            document.querySelector('.sidebar-right')?.classList.remove('mobile-active');
+            document.querySelector('.main-content')?.classList.remove('mobile-active');
+        }
+    });
+}
+
+function switchMobileTab(tab) {
+    const sidebarLeft = document.querySelector('.sidebar-left');
+    const sidebarRight = document.querySelector('.sidebar-right');
+    const mainContent = document.querySelector('.main-content');
+    const tabs = document.querySelectorAll('.mobile-tab');
+
+    // Remove all active states
+    sidebarLeft?.classList.remove('mobile-active');
+    sidebarRight?.classList.remove('mobile-active');
+    mainContent?.classList.remove('mobile-active');
+    tabs.forEach(t => t.classList.remove('active'));
+
+    // Activate selected tab
+    const activeTab = document.querySelector(`.mobile-tab[data-tab="${tab}"]`);
+    activeTab?.classList.add('active');
+
+    switch (tab) {
+        case 'projects':
+            sidebarLeft?.classList.add('mobile-active');
+            break;
+        case 'main':
+            mainContent?.classList.add('mobile-active');
+            break;
+        case 'tasks':
+            sidebarRight?.classList.add('mobile-active');
+            break;
+    }
+}
+
+// Make function globally available
+window.switchMobileTab = switchMobileTab;
 
 async function loadAllData() {
     // Load tasks, notes, and changes log from localStorage (these are local-only)
@@ -746,6 +799,11 @@ function selectProject(project) {
             item.classList.add('active');
         }
     });
+
+    // On mobile, switch to main view after selecting project
+    if (window.innerWidth <= 900) {
+        switchMobileTab('main');
+    }
 
     // Hide the "Select a Project" message and show project view
     const noProjectEl = document.getElementById('noProjectSelected');

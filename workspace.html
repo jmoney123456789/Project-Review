@@ -210,6 +210,22 @@
         </aside>
     </div>
 
+    <!-- Mobile Tab Navigation -->
+    <nav class="mobile-tab-nav" id="mobileTabNav">
+        <button class="mobile-tab" data-tab="projects" onclick="switchMobileTab('projects')">
+            <span class="mobile-tab-icon">&#128203;</span>
+            <span>Projects</span>
+        </button>
+        <button class="mobile-tab active" data-tab="main" onclick="switchMobileTab('main')">
+            <span class="mobile-tab-icon">&#128196;</span>
+            <span>View</span>
+        </button>
+        <button class="mobile-tab" data-tab="tasks" onclick="switchMobileTab('tasks')">
+            <span class="mobile-tab-icon">&#9745;</span>
+            <span>Tasks</span>
+        </button>
+    </nav>
+
     <!-- Delete Confirmation Modal -->
     <div class="modal" id="deleteModal" hidden>
         <div class="modal-backdrop" id="deleteModalBackdrop"></div>
