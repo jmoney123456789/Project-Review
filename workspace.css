@@ -141,8 +141,12 @@
 }
 
 .sidebar-project-item.active {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
+    background: var(--grey-dark);
+    border: 1px solid var(--grey-mid);
+}
+
+.sidebar-project-item.active .sidebar-project-name {
+    color: var(--white);
 }
 
 .sidebar-project-content {

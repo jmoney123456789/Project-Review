@@ -1301,7 +1301,7 @@ function selectProject(project) {
     // Update sidebar active state
     document.querySelectorAll('.sidebar-project-item').forEach(item => {
         item.classList.remove('active');
-        if (allProjects[parseInt(item.dataset.index)]?.projectName === project.projectName) {
+        if (item.dataset.projectName === project.projectName) {
             item.classList.add('active');
         }
     });
