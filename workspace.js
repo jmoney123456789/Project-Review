@@ -29,6 +29,7 @@ let allFeedback = [];
 let allTasks = {};
 let allNotes = {};
 let allProgressTabs = {}; // { projectName: [tabs] }
+let allProjectFiles = {}; // { projectName: [files] }
 let currentProject = null;
 let currentImageIndex = 0;
 let currentTabIndex = 0; // 0 = Overview
@@ -47,6 +48,7 @@ let feedbackListener = null;
 let tasksListener = null;
 let notesListener = null;
 let progressTabsListener = null;
+let projectFilesListener = null;
 
 // ==========================================
 // Image Cache System
@@ -184,10 +186,11 @@ function switchMobileTab(tab) {
 window.switchMobileTab = switchMobileTab;
 
 async function loadAllData() {
-    // Load tasks, notes, progress tabs, and changes log from localStorage (these are local-only)
+    // Load tasks, notes, progress tabs, project files, and changes log from localStorage (these are local-only)
     allTasks = JSON.parse(localStorage.getItem('projectTasks') || '{}');
     allNotes = JSON.parse(localStorage.getItem('projectNotes') || '{}');
     allProgressTabs = JSON.parse(localStorage.getItem('projectProgressTabs') || '{}');
+    allProjectFiles = JSON.parse(localStorage.getItem('projectFiles') || '{}');
     loadChangesLog();
 
     // FIREBASE IS SOURCE OF TRUTH - fetch from Firebase FIRST
@@ -211,7 +214,7 @@ async function loadAllData() {
 // Fetch from Firebase as the single source of truth
 async function fetchFromFirebaseAsSourceOfTruth() {
     const snapshot = await database.ref('/').once('value');
-    const data = snapshot.val() || { projects: {}, feedback: {}, tasks: {}, notes: {}, progressTabs: {} };
+    const data = snapshot.val() || { projects: {}, feedback: {}, tasks: {}, notes: {}, progressTabs: {}, projectFiles: {} };
 
     // Convert Firebase objects to arrays
     const projectsObj = data.projects || {};
@@ -219,6 +222,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     const tasksObj = data.tasks || {};
     const notesObj = data.notes || {};
     const progressTabsObj = data.progressTabs || {};
+    const projectFilesObj = data.projectFiles || {};
 
     // Firebase data completely replaces local data for projects/feedback
     allProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
@@ -261,6 +265,19 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     });
     localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
 
+    // Load project files from Firebase - convert from {projectKey: {files: [...]}} to {projectName: [...]}
+    allProjectFiles = {};
+    Object.keys(projectFilesObj).forEach(key => {
+        // Find the original project name (key is sanitized)
+        const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+        const projectName = project ? project.projectName : key;
+        const filesData = projectFilesObj[key];
+        if (filesData && filesData.files) {
+            allProjectFiles[projectName] = filesData.files;
+        }
+    });
+    localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+
     // Cache images locally (but Firebase data is truth)
     allProjects.forEach(p => {
         if (p.images && p.images.length > 0) {
@@ -281,7 +298,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
 
-    console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback,', Object.keys(allTasks).length, 'task lists,', Object.keys(allNotes).length, 'notes,', Object.keys(allProgressTabs).length, 'progress tab sets');
+    console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback,', Object.keys(allTasks).length, 'task lists,', Object.keys(allNotes).length, 'notes,', Object.keys(allProgressTabs).length, 'progress tab sets,', Object.keys(allProjectFiles).length, 'file sets');
 }
 
 // Setup Firebase real-time listeners
@@ -439,6 +456,34 @@ function setupFirebaseListeners() {
                     switchProgressTab(0);
                 }
             }
+        }
+    });
+
+    // Listen for project files changes
+    projectFilesListener = database.ref('projectFiles').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const projectFilesObj = snapshot.val() || {};
+
+        // Convert from {projectKey: {files: [...]}} to {projectName: [...]}
+        allProjectFiles = {};
+        Object.keys(projectFilesObj).forEach(key => {
+            // Find the original project name (key is sanitized)
+            const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+            const projectName = project ? project.projectName : key;
+            if (projectFilesObj[key] && projectFilesObj[key].files) {
+                allProjectFiles[projectName] = projectFilesObj[key].files;
+            }
+        });
+
+        // Update localStorage
+        localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+
+        console.log('Real-time update: Project files changed, now have', Object.keys(allProjectFiles).length, 'file sets');
+
+        // Update files dropdown if viewing a project and dropdown is open
+        if (currentProject) {
+            renderFilesDropdown();
         }
     });
 
@@ -761,6 +806,41 @@ function getTotalProjectImageCount() {
     return total;
 }
 
+// ==========================================
+// Project Files Firebase Functions
+// ==========================================
+
+// Get files for current project
+function getProjectFiles() {
+    if (!currentProject) return [];
+    return allProjectFiles[currentProject.projectName] || [];
+}
+
+// Sync project files to Firebase
+async function syncProjectFilesToFirebase(projectName, files) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`projectFiles/${key}`).set({
+            files: files,
+            _lastModified: new Date().toISOString()
+        });
+        console.log('Synced project files to Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase project files sync error:', error);
+    }
+}
+
+// Delete project files from Firebase when project is deleted
+async function deleteProjectFilesFromFirebase(projectName) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`projectFiles/${key}`).remove();
+        console.log('Deleted project files from Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase project files delete error:', error);
+    }
+}
+
 // Sanitize keys for Firebase (no ., #, $, [, ])
 function sanitizeFirebaseKey(key) {
     return key.replace(/[.#$\[\]]/g, '_');
@@ -859,12 +939,28 @@ function setupEventListeners() {
         if (e.key === 'Escape') {
             const addTabModal = document.getElementById('addTabModal');
             const deleteTabModal = document.getElementById('deleteTabModal');
+            const fileViewerModal = document.getElementById('fileViewerModal');
+            const deleteFileModal = document.getElementById('deleteFileModal');
+            const filesDropdown = document.getElementById('filesDropdown');
+
             if (addTabModal && !addTabModal.hidden) {
                 hideAddTabModal();
                 return;
             }
             if (deleteTabModal && !deleteTabModal.hidden) {
                 hideDeleteTabModal();
+                return;
+            }
+            if (fileViewerModal && !fileViewerModal.hidden) {
+                hideFileViewerModal();
+                return;
+            }
+            if (deleteFileModal && !deleteFileModal.hidden) {
+                hideDeleteFileModal();
+                return;
+            }
+            if (filesDropdown && !filesDropdown.hidden) {
+                filesDropdown.hidden = true;
                 return;
             }
         }
@@ -915,6 +1011,20 @@ function setupEventListeners() {
     // Setup progress tab modals
     setupAddTabModal();
     setupDeleteTabModal();
+
+    // Project files event listeners
+    document.getElementById('filesBtn')?.addEventListener('click', toggleFilesDropdown);
+    document.getElementById('uploadFileBtn')?.addEventListener('click', () => {
+        document.getElementById('projectFileInput')?.click();
+    });
+    document.getElementById('projectFileInput')?.addEventListener('change', handleProjectFileUpload);
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', closeFilesDropdownOnClickOutside);
+
+    // Setup file modals
+    setupFileViewerModal();
+    setupDeleteFileModal();
 }
 
 // ==========================================
@@ -1922,10 +2032,11 @@ async function confirmDeleteProject() {
     saveImageCache(imageCache);
     console.log(`Deleted cached images for "${projectName}"`);
 
-    // 4. Remove tasks, notes, progress tabs, and changes log
+    // 4. Remove tasks, notes, progress tabs, project files, and changes log
     delete allTasks[projectName];
     delete allNotes[projectName];
     delete allProgressTabs[projectName];
+    delete allProjectFiles[projectName];
     delete allChangesLog[projectName];
 
     // 5. Remove from completed projects tracking (dashboard)
@@ -1939,6 +2050,7 @@ async function confirmDeleteProject() {
     localStorage.setItem('projectTasks', JSON.stringify(allTasks));
     localStorage.setItem('projectNotes', JSON.stringify(allNotes));
     localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
     localStorage.setItem('projectChangesLog', JSON.stringify(allChangesLog));
 
     console.log(`HARD DELETED project "${projectName}" and all associated data`);
@@ -1975,6 +2087,7 @@ async function confirmDeleteProject() {
     await deleteTasksFromFirebase(projectName);
     await deleteNotesFromFirebase(projectName);
     await deleteProgressTabsFromFirebase(projectName);
+    await deleteProjectFilesFromFirebase(projectName);
 
     // Re-render
     renderProjectList();
@@ -2506,4 +2619,288 @@ async function confirmDeleteProgressTab() {
     hideDeleteTabModal();
 
     console.log('Deleted progress tab:', deletedTab.tabName);
+}
+
+// ==========================================
+// Project Files (Indicator .txt files)
+// ==========================================
+
+let fileToDelete = null;
+let currentViewingFile = null;
+
+// Toggle files dropdown
+function toggleFilesDropdown() {
+    const dropdown = document.getElementById('filesDropdown');
+    if (!dropdown) return;
+
+    if (dropdown.hidden) {
+        renderFilesDropdown();
+        dropdown.hidden = false;
+    } else {
+        dropdown.hidden = true;
+    }
+}
+
+// Close dropdown when clicking outside
+function closeFilesDropdownOnClickOutside(e) {
+    const container = document.getElementById('filesDropdownContainer');
+    const dropdown = document.getElementById('filesDropdown');
+    if (container && dropdown && !container.contains(e.target) && !dropdown.hidden) {
+        dropdown.hidden = true;
+    }
+}
+
+// Render files dropdown list
+function renderFilesDropdown() {
+    const listContainer = document.getElementById('filesDropdownList');
+    const countEl = document.getElementById('filesCount');
+    if (!listContainer) return;
+
+    const files = getProjectFiles();
+
+    // Update count badge
+    if (countEl) {
+        countEl.textContent = files.length > 0 ? files.length : '';
+    }
+
+    if (files.length === 0) {
+        listContainer.innerHTML = '<div class="files-empty">No files uploaded</div>';
+        return;
+    }
+
+    listContainer.innerHTML = files.map(file => `
+        <div class="file-item" data-file-id="${file.id}">
+            <div class="file-item-info" data-file-id="${file.id}">
+                <span class="file-icon">&#128196;</span>
+                <span class="file-name">${escapeHtml(file.fileName)}</span>
+            </div>
+            <button class="file-delete-btn" data-file-id="${file.id}" title="Delete file">&times;</button>
+        </div>
+    `).join('');
+
+    // Add click listeners for viewing files
+    listContainer.querySelectorAll('.file-item-info').forEach(item => {
+        item.addEventListener('click', () => {
+            const fileId = item.dataset.fileId;
+            openFileViewer(fileId);
+        });
+    });
+
+    // Add click listeners for delete buttons
+    listContainer.querySelectorAll('.file-delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const fileId = btn.dataset.fileId;
+            showDeleteFileModal(fileId);
+        });
+    });
+}
+
+// Handle file upload
+async function handleProjectFileUpload(e) {
+    if (!currentProject) {
+        alert('Please select a project first');
+        return;
+    }
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.name.endsWith('.txt')) {
+        alert('Only .txt files are allowed');
+        e.target.value = '';
+        return;
+    }
+
+    // Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+        alert('File is too large. Maximum size is 5MB.');
+        e.target.value = '';
+        return;
+    }
+
+    try {
+        // Read file content
+        const content = await readFileAsText(file);
+
+        // Create file object
+        const newFile = {
+            id: 'file_' + generateId(),
+            fileName: file.name,
+            content: content,
+            uploadedAt: new Date().toISOString(),
+            _lastModified: new Date().toISOString()
+        };
+
+        // Add to project files
+        const files = getProjectFiles();
+        files.push(newFile);
+
+        // Save and sync
+        allProjectFiles[currentProject.projectName] = files;
+        localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+        await syncProjectFilesToFirebase(currentProject.projectName, files);
+
+        // Log the change
+        const user = getCurrentUser();
+        logChange(currentProject.projectName, user, 'created', `Uploaded file "${file.name}"`);
+
+        // Refresh dropdown
+        renderFilesDropdown();
+
+        console.log('File uploaded:', file.name);
+
+    } catch (error) {
+        console.error('File upload error:', error);
+        alert('Failed to upload file. Please try again.');
+    }
+
+    e.target.value = '';
+}
+
+// Read file as text
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsText(file);
+    });
+}
+
+// Open file viewer modal
+function openFileViewer(fileId) {
+    const files = getProjectFiles();
+    const file = files.find(f => f.id === fileId);
+    if (!file) return;
+
+    currentViewingFile = file;
+
+    const modal = document.getElementById('fileViewerModal');
+    const titleEl = document.getElementById('fileViewerTitle');
+    const contentEl = document.getElementById('fileViewerContent');
+
+    if (titleEl) titleEl.textContent = file.fileName;
+    if (contentEl) contentEl.textContent = file.content;
+    if (modal) modal.hidden = false;
+
+    // Close the dropdown
+    const dropdown = document.getElementById('filesDropdown');
+    if (dropdown) dropdown.hidden = true;
+}
+
+// Copy file content to clipboard
+async function copyFileContent() {
+    if (!currentViewingFile) return;
+
+    try {
+        await navigator.clipboard.writeText(currentViewingFile.content);
+
+        // Show feedback
+        const copyBtn = document.getElementById('copyFileContentBtn');
+        const copyText = copyBtn?.querySelector('.copy-text');
+        if (copyText) {
+            const originalText = copyText.textContent;
+            copyText.textContent = 'Copied!';
+            setTimeout(() => {
+                copyText.textContent = originalText;
+            }, 2000);
+        }
+
+        console.log('File content copied to clipboard');
+    } catch (error) {
+        console.error('Copy failed:', error);
+        alert('Failed to copy. Please select the text manually.');
+    }
+}
+
+// Setup file viewer modal
+function setupFileViewerModal() {
+    const modal = document.getElementById('fileViewerModal');
+    const backdrop = document.getElementById('fileViewerModalBackdrop');
+    const closeBtn = document.getElementById('fileViewerModalClose');
+    const copyBtn = document.getElementById('copyFileContentBtn');
+
+    if (!modal) return;
+
+    backdrop?.addEventListener('click', hideFileViewerModal);
+    closeBtn?.addEventListener('click', hideFileViewerModal);
+    copyBtn?.addEventListener('click', copyFileContent);
+}
+
+function hideFileViewerModal() {
+    const modal = document.getElementById('fileViewerModal');
+    if (modal) modal.hidden = true;
+    currentViewingFile = null;
+}
+
+// Delete file modal
+function setupDeleteFileModal() {
+    const modal = document.getElementById('deleteFileModal');
+    const backdrop = document.getElementById('deleteFileModalBackdrop');
+    const closeBtn = document.getElementById('deleteFileModalClose');
+    const cancelBtn = document.getElementById('deleteFileCancelBtn');
+    const confirmBtn = document.getElementById('deleteFileConfirmBtn');
+
+    if (!modal) return;
+
+    backdrop?.addEventListener('click', hideDeleteFileModal);
+    closeBtn?.addEventListener('click', hideDeleteFileModal);
+    cancelBtn?.addEventListener('click', hideDeleteFileModal);
+    confirmBtn?.addEventListener('click', confirmDeleteFile);
+}
+
+function showDeleteFileModal(fileId) {
+    fileToDelete = fileId;
+    const modal = document.getElementById('deleteFileModal');
+    const nameSpan = document.getElementById('deleteFileName');
+
+    // Find file name
+    const files = getProjectFiles();
+    const file = files.find(f => f.id === fileId);
+
+    if (nameSpan && file) nameSpan.textContent = file.fileName;
+    if (modal) modal.hidden = false;
+}
+
+function hideDeleteFileModal() {
+    const modal = document.getElementById('deleteFileModal');
+    if (modal) modal.hidden = true;
+    fileToDelete = null;
+}
+
+async function confirmDeleteFile() {
+    if (!fileToDelete || !currentProject) return;
+
+    const files = getProjectFiles();
+    const fileIndex = files.findIndex(f => f.id === fileToDelete);
+
+    if (fileIndex === -1) {
+        hideDeleteFileModal();
+        return;
+    }
+
+    const deletedFile = files[fileIndex];
+
+    // Remove file
+    files.splice(fileIndex, 1);
+
+    // Save and sync
+    allProjectFiles[currentProject.projectName] = files;
+    localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+    await syncProjectFilesToFirebase(currentProject.projectName, files);
+
+    // Log the change
+    const user = getCurrentUser();
+    logChange(currentProject.projectName, user, 'deleted', `Deleted file "${deletedFile.fileName}"`);
+
+    // Refresh dropdown
+    renderFilesDropdown();
+
+    // Hide modal
+    hideDeleteFileModal();
+
+    console.log('Deleted file:', deletedFile.fileName);
 }

@@ -94,6 +94,26 @@
                         <!-- Tabs rendered dynamically -->
                     </div>
                     <button class="progress-tabs-add" id="addProgressTabBtn" title="Add progress tab">+</button>
+
+                    <!-- Files Button & Dropdown -->
+                    <div class="files-dropdown-container" id="filesDropdownContainer">
+                        <button class="files-btn" id="filesBtn" title="Project files">
+                            <span class="files-btn-icon">&#128196;</span>
+                            <span class="files-btn-text">Files</span>
+                            <span class="files-count" id="filesCount"></span>
+                        </button>
+                        <div class="files-dropdown" id="filesDropdown" hidden>
+                            <div class="files-dropdown-header">
+                                <span>Indicator Files</span>
+                                <input type="file" id="projectFileInput" accept=".txt" hidden>
+                                <button class="files-upload-btn" id="uploadFileBtn" title="Upload .txt file">+ Upload</button>
+                            </div>
+                            <div class="files-dropdown-list" id="filesDropdownList">
+                                <!-- Files loaded dynamically -->
+                                <div class="files-empty">No files uploaded</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Tab Content: Overview (default view) -->
@@ -365,6 +385,45 @@
                 <div class="modal-actions">
                     <button class="btn-cancel" id="deleteTabCancelBtn">Cancel</button>
                     <button class="btn-delete" id="deleteTabConfirmBtn">Delete Tab</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Viewer Modal -->
+    <div class="modal" id="fileViewerModal" hidden>
+        <div class="modal-backdrop" id="fileViewerModalBackdrop"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header file-viewer-header">
+                <h2 id="fileViewerTitle">file.txt</h2>
+                <div class="file-viewer-actions">
+                    <button class="btn-copy-all" id="copyFileContentBtn" title="Copy all content">
+                        <span class="copy-icon">&#128203;</span>
+                        <span class="copy-text">Copy All</span>
+                    </button>
+                    <button class="modal-close" id="fileViewerModalClose">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body file-viewer-body">
+                <pre class="file-content" id="fileViewerContent"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete File Confirmation Modal -->
+    <div class="modal" id="deleteFileModal" hidden>
+        <div class="modal-backdrop" id="deleteFileModalBackdrop"></div>
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Delete File</h2>
+                <button class="modal-close" id="deleteFileModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="delete-warning">Are you sure you want to delete "<span id="deleteFileName"></span>"?</p>
+                <p class="delete-subtext">This action cannot be undone.</p>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="deleteFileCancelBtn">Cancel</button>
+                    <button class="btn-delete" id="deleteFileConfirmBtn">Delete File</button>
                 </div>
             </div>
         </div>

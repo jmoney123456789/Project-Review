@@ -2006,4 +2006,290 @@
     .progress-field textarea {
         min-height: 60px;
     }
+
+    .files-btn .files-btn-text {
+        display: none;
+    }
+
+    .files-dropdown {
+        right: 0;
+        left: auto;
+        min-width: 200px;
+    }
+}
+
+/* ==========================================
+   PROJECT FILES DROPDOWN
+   ========================================== */
+
+.files-dropdown-container {
+    position: relative;
+    margin-left: 0.5rem;
+}
+
+.files-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.files-btn:hover {
+    background: var(--grey-dark);
+    color: var(--text-primary);
+    border-color: var(--grey-mid);
+}
+
+.files-btn-icon {
+    font-size: 1rem;
+}
+
+.files-count {
+    background: var(--accent);
+    color: white;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.files-count:empty {
+    display: none;
+}
+
+.files-dropdown {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 0;
+    min-width: 280px;
+    background: var(--black-light);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    overflow: hidden;
+}
+
+.files-dropdown-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--glass-border);
+    background: var(--bg-card);
+}
+
+.files-dropdown-header span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--grey-mid);
+}
+
+.files-upload-btn {
+    padding: 0.35rem 0.6rem;
+    background: var(--white);
+    border: none;
+    border-radius: 4px;
+    color: var(--black);
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.files-upload-btn:hover {
+    background: var(--grey-light);
+}
+
+.files-dropdown-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.files-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    transition: var(--transition);
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-item:hover {
+    background: var(--grey-dark);
+}
+
+.file-item-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.file-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.file-name {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-delete-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.file-item:hover .file-delete-btn {
+    opacity: 1;
+}
+
+.file-delete-btn:hover {
+    color: #ef4444;
+}
+
+/* ==========================================
+   FILE VIEWER MODAL
+   ========================================== */
+
+.modal-large {
+    max-width: 800px;
+    width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.file-viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-viewer-header h2 {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+}
+
+.file-viewer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.btn-copy-all {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.85rem;
+    background: var(--white);
+    border: none;
+    border-radius: 6px;
+    color: var(--black);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-copy-all:hover {
+    background: var(--grey-light);
+}
+
+.copy-icon {
+    font-size: 0.9rem;
+}
+
+.file-viewer-body {
+    flex: 1;
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+.file-content {
+    width: 100%;
+    height: 100%;
+    max-height: 60vh;
+    margin: 0;
+    padding: 1rem 1.25rem;
+    background: var(--black);
+    border: 1px solid var(--border);
+    border-radius: 0 0 var(--radius) var(--radius);
+    color: var(--grey-light);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-y: auto;
+}
+
+/* File viewer responsive */
+@media (max-width: 600px) {
+    .modal-large {
+        width: 95vw;
+        max-height: 85vh;
+    }
+
+    .file-viewer-header h2 {
+        max-width: 50%;
+        font-size: 0.9rem;
+    }
+
+    .btn-copy-all .copy-text {
+        display: none;
+    }
+
+    .btn-copy-all {
+        padding: 0.5rem;
+    }
+
+    .file-content {
+        font-size: 0.8rem;
+        max-height: 50vh;
+    }
 }
