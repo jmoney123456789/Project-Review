@@ -2072,12 +2072,14 @@
 }
 
 .files-count {
-    background: var(--accent);
-    color: white;
+    background: var(--white);
+    color: var(--black);
     font-size: 0.65rem;
-    padding: 0.1rem 0.4rem;
+    padding: 0.15rem 0.45rem;
     border-radius: 10px;
-    font-weight: 600;
+    font-weight: 700;
+    min-width: 1.1rem;
+    text-align: center;
 }
 
 .files-count:empty {
