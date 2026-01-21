@@ -28,10 +28,14 @@ let allProjects = [];
 let allFeedback = [];
 let allTasks = {};
 let allNotes = {};
+let allProgressTabs = {}; // { projectName: [tabs] }
 let currentProject = null;
 let currentImageIndex = 0;
+let currentTabIndex = 0; // 0 = Overview
+let currentProgressImageIndex = 0;
 let projectToDelete = null;
 let dataLoaded = false;
+let progressFieldsDebounceTimer = null;
 
 // Filter state for categories/tags
 let statusFilter = 'all'; // 'all', 'in_progress', 'completed', 'archived'
@@ -42,6 +46,7 @@ let projectsListener = null;
 let feedbackListener = null;
 let tasksListener = null;
 let notesListener = null;
+let progressTabsListener = null;
 
 // ==========================================
 // Image Cache System
@@ -179,9 +184,10 @@ function switchMobileTab(tab) {
 window.switchMobileTab = switchMobileTab;
 
 async function loadAllData() {
-    // Load tasks, notes, and changes log from localStorage (these are local-only)
+    // Load tasks, notes, progress tabs, and changes log from localStorage (these are local-only)
     allTasks = JSON.parse(localStorage.getItem('projectTasks') || '{}');
     allNotes = JSON.parse(localStorage.getItem('projectNotes') || '{}');
+    allProgressTabs = JSON.parse(localStorage.getItem('projectProgressTabs') || '{}');
     loadChangesLog();
 
     // FIREBASE IS SOURCE OF TRUTH - fetch from Firebase FIRST
@@ -205,13 +211,14 @@ async function loadAllData() {
 // Fetch from Firebase as the single source of truth
 async function fetchFromFirebaseAsSourceOfTruth() {
     const snapshot = await database.ref('/').once('value');
-    const data = snapshot.val() || { projects: {}, feedback: {}, tasks: {}, notes: {} };
+    const data = snapshot.val() || { projects: {}, feedback: {}, tasks: {}, notes: {}, progressTabs: {} };
 
     // Convert Firebase objects to arrays
     const projectsObj = data.projects || {};
     const feedbackObj = data.feedback || {};
     const tasksObj = data.tasks || {};
     const notesObj = data.notes || {};
+    const progressTabsObj = data.progressTabs || {};
 
     // Firebase data completely replaces local data for projects/feedback
     allProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
@@ -241,6 +248,19 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     });
     localStorage.setItem('projectNotes', JSON.stringify(allNotes));
 
+    // Load progress tabs from Firebase - convert from {projectKey: [tabs]} to {projectName: [tabs]}
+    allProgressTabs = {};
+    Object.keys(progressTabsObj).forEach(key => {
+        // Find the original project name (key is sanitized)
+        const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+        const projectName = project ? project.projectName : key;
+        const tabsData = progressTabsObj[key];
+        if (tabsData && tabsData.tabs) {
+            allProgressTabs[projectName] = tabsData.tabs;
+        }
+    });
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+
     // Cache images locally (but Firebase data is truth)
     allProjects.forEach(p => {
         if (p.images && p.images.length > 0) {
@@ -261,7 +281,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
 
-    console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback,', Object.keys(allTasks).length, 'task lists,', Object.keys(allNotes).length, 'notes');
+    console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback,', Object.keys(allTasks).length, 'task lists,', Object.keys(allNotes).length, 'notes,', Object.keys(allProgressTabs).length, 'progress tab sets');
 }
 
 // Setup Firebase real-time listeners
@@ -381,6 +401,44 @@ function setupFirebaseListeners() {
         // Update notes display if viewing a project
         if (currentProject) {
             loadNotes();
+        }
+    });
+
+    // Listen for progress tabs changes
+    progressTabsListener = database.ref('progressTabs').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const progressTabsObj = snapshot.val() || {};
+
+        // Convert from {projectKey: {tabs: [...]}} to {projectName: [...]}
+        allProgressTabs = {};
+        Object.keys(progressTabsObj).forEach(key => {
+            // Find the original project name (key is sanitized)
+            const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
+            const projectName = project ? project.projectName : key;
+            if (progressTabsObj[key] && progressTabsObj[key].tabs) {
+                allProgressTabs[projectName] = progressTabsObj[key].tabs;
+            }
+        });
+
+        // Update localStorage
+        localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+
+        console.log('Real-time update: Progress tabs changed, now have', Object.keys(allProgressTabs).length, 'tab sets');
+
+        // Update tabs display if viewing a project
+        if (currentProject) {
+            renderProgressTabs();
+            // If on a progress tab, refresh the content
+            if (currentTabIndex > 0) {
+                const tabs = getProjectProgressTabs();
+                if (tabs[currentTabIndex - 1]) {
+                    populateProgressTab(tabs[currentTabIndex - 1]);
+                } else {
+                    // Tab was deleted, switch to Overview
+                    switchProgressTab(0);
+                }
+            }
         }
     });
 
@@ -640,6 +698,69 @@ async function deleteNotesFromFirebase(projectName) {
     }
 }
 
+// Sync progress tabs for a project to Firebase
+async function syncProgressTabsToFirebase(projectName, tabs) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`progressTabs/${key}`).set({
+            tabs: tabs,
+            _lastModified: new Date().toISOString()
+        });
+        console.log('Synced progress tabs to Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase progress tabs sync error:', error);
+    }
+}
+
+// Sync a single progress tab to Firebase
+async function syncProgressTabToFirebase(tab) {
+    if (!currentProject) return;
+    const projectName = currentProject.projectName;
+    const tabs = getProjectProgressTabs();
+
+    // Find and update the tab
+    const tabIndex = tabs.findIndex(t => t.id === tab.id);
+    if (tabIndex !== -1) {
+        tabs[tabIndex] = { ...tab, _lastModified: new Date().toISOString() };
+    } else {
+        tabs.push({ ...tab, _lastModified: new Date().toISOString() });
+    }
+
+    // Save locally
+    allProgressTabs[projectName] = tabs;
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+
+    // Sync to Firebase
+    await syncProgressTabsToFirebase(projectName, tabs);
+}
+
+// Delete progress tabs from Firebase when project is deleted
+async function deleteProgressTabsFromFirebase(projectName) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`progressTabs/${key}`).remove();
+        console.log('Deleted progress tabs from Firebase for:', projectName);
+    } catch (error) {
+        console.error('Firebase progress tabs delete error:', error);
+    }
+}
+
+// Get progress tabs for current project
+function getProjectProgressTabs() {
+    if (!currentProject) return [];
+    return allProgressTabs[currentProject.projectName] || [];
+}
+
+// Get total image count across overview and all progress tabs
+function getTotalProjectImageCount() {
+    if (!currentProject) return 0;
+    let total = currentProject.images?.length || 0;
+    getProjectProgressTabs().forEach(tab => {
+        total += (tab.images || []).length;
+    });
+    return total;
+}
+
 // Sanitize keys for Firebase (no ., #, $, [, ])
 function sanitizeFirebaseKey(key) {
     return key.replace(/[.#$\[\]]/g, '_');
@@ -732,10 +853,68 @@ function setupEventListeners() {
 
     // Keyboard navigation for gallery
     document.addEventListener('keydown', (e) => {
-        if (!currentProject || !currentProject.images?.length) return;
-        if (e.key === 'ArrowLeft') navigateGallery(-1);
-        if (e.key === 'ArrowRight') navigateGallery(1);
+        if (!currentProject) return;
+
+        // Handle ESC for modals
+        if (e.key === 'Escape') {
+            const addTabModal = document.getElementById('addTabModal');
+            const deleteTabModal = document.getElementById('deleteTabModal');
+            if (addTabModal && !addTabModal.hidden) {
+                hideAddTabModal();
+                return;
+            }
+            if (deleteTabModal && !deleteTabModal.hidden) {
+                hideDeleteTabModal();
+                return;
+            }
+        }
+
+        // Gallery navigation (only when on Overview tab)
+        if (currentTabIndex === 0 && currentProject.images?.length) {
+            if (e.key === 'ArrowLeft') navigateGallery(-1);
+            if (e.key === 'ArrowRight') navigateGallery(1);
+        }
+
+        // Progress gallery navigation (when on a progress tab)
+        if (currentTabIndex > 0) {
+            const tabs = getProjectProgressTabs();
+            const tab = tabs[currentTabIndex - 1];
+            if (tab?.images?.length) {
+                if (e.key === 'ArrowLeft') navigateProgressGallery(-1);
+                if (e.key === 'ArrowRight') navigateProgressGallery(1);
+            }
+        }
     });
+
+    // Progress tabs event listeners
+    document.getElementById('addProgressTabBtn')?.addEventListener('click', showAddTabModal);
+
+    // Progress gallery
+    document.getElementById('addProgressImagesBtn')?.addEventListener('click', () => {
+        document.getElementById('progressFileInput')?.click();
+    });
+    document.getElementById('progressFileInput')?.addEventListener('change', handleProgressImageUpload);
+    document.getElementById('progressPrevBtn')?.addEventListener('click', () => navigateProgressGallery(-1));
+    document.getElementById('progressNextBtn')?.addEventListener('click', () => navigateProgressGallery(1));
+
+    // Progress text fields with auto-save
+    document.getElementById('progressDoneText')?.addEventListener('input', autoSaveProgressFields);
+    document.getElementById('progressUnsureText')?.addEventListener('input', autoSaveProgressFields);
+    document.getElementById('progressNotWorkingText')?.addEventListener('input', autoSaveProgressFields);
+    document.getElementById('saveProgressFieldsBtn')?.addEventListener('click', saveProgressFields);
+
+    // Delete progress tab button
+    document.getElementById('deleteProgressTabBtn')?.addEventListener('click', () => {
+        if (currentTabIndex > 0) {
+            const tabs = getProjectProgressTabs();
+            const tab = tabs[currentTabIndex - 1];
+            if (tab) showDeleteTabModal(tab.id);
+        }
+    });
+
+    // Setup progress tab modals
+    setupAddTabModal();
+    setupDeleteTabModal();
 }
 
 // ==========================================
@@ -957,6 +1136,8 @@ function clearFilters() {
 function selectProject(project) {
     currentProject = project;
     currentImageIndex = 0;
+    currentTabIndex = 0; // Reset to Overview tab
+    currentProgressImageIndex = 0;
 
     // Update sidebar active state
     document.querySelectorAll('.sidebar-project-item').forEach(item => {
@@ -1004,6 +1185,10 @@ function selectProject(project) {
 
     // Populate project details
     populateProjectView(project);
+
+    // Render progress tabs and ensure Overview is shown
+    renderProgressTabs();
+    switchProgressTab(0); // Show Overview tab
 
     // Load tasks for this project
     renderTasks();
@@ -1187,11 +1372,11 @@ async function handleGalleryUpload(e) {
     if (files.length === 0) return;
 
     const maxImages = window.IMAGE_CONFIG?.maxImages || 50;
-    const currentImages = currentProject.images || [];
+    const totalImages = getTotalProjectImageCount();
 
-    // Check if we'd exceed the limit
-    if (currentImages.length + files.length > maxImages) {
-        alert(`Maximum ${maxImages} images allowed. You can add ${maxImages - currentImages.length} more.`);
+    // Check if we'd exceed the limit (total across overview + progress tabs)
+    if (totalImages + files.length > maxImages) {
+        alert(`Maximum ${maxImages} images total. You can add ${maxImages - totalImages} more.`);
         e.target.value = '';
         return;
     }
@@ -1284,11 +1469,17 @@ function updateImageCount() {
     const countEl = document.getElementById('imageCount');
     if (!countEl) return;
 
-    const count = currentProject?.images?.length || 0;
+    const overviewCount = currentProject?.images?.length || 0;
+    const totalCount = getTotalProjectImageCount();
     const maxImages = window.IMAGE_CONFIG?.maxImages || 50;
 
-    if (count > 0) {
-        countEl.textContent = `${count} / ${maxImages}`;
+    if (overviewCount > 0 || totalCount > 0) {
+        if (totalCount > overviewCount) {
+            // There are images in progress tabs too
+            countEl.textContent = `${overviewCount} here (${totalCount}/${maxImages} total)`;
+        } else {
+            countEl.textContent = `${totalCount}/${maxImages}`;
+        }
     } else {
         countEl.textContent = '';
     }
@@ -1730,9 +1921,10 @@ async function confirmDeleteProject() {
     saveImageCache(imageCache);
     console.log(`Deleted cached images for "${projectName}"`);
 
-    // 4. Remove tasks, notes, and changes log
+    // 4. Remove tasks, notes, progress tabs, and changes log
     delete allTasks[projectName];
     delete allNotes[projectName];
+    delete allProgressTabs[projectName];
     delete allChangesLog[projectName];
 
     // 5. Remove from completed projects tracking (dashboard)
@@ -1745,6 +1937,7 @@ async function confirmDeleteProject() {
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
     localStorage.setItem('projectTasks', JSON.stringify(allTasks));
     localStorage.setItem('projectNotes', JSON.stringify(allNotes));
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
     localStorage.setItem('projectChangesLog', JSON.stringify(allChangesLog));
 
     console.log(`HARD DELETED project "${projectName}" and all associated data`);
@@ -1780,10 +1973,536 @@ async function confirmDeleteProject() {
     await deleteFeedbackFromFirebase(projectName);
     await deleteTasksFromFirebase(projectName);
     await deleteNotesFromFirebase(projectName);
+    await deleteProgressTabsFromFirebase(projectName);
 
     // Re-render
     renderProjectList();
 
     // Hide modal
     hideDeleteModal();
+}
+
+// ==========================================
+// Progress Tabs
+// ==========================================
+
+// Render the progress tabs bar
+function renderProgressTabs() {
+    const container = document.getElementById('progressTabsScroll');
+    if (!container) return;
+
+    const tabs = getProjectProgressTabs();
+
+    // Build tabs HTML: Overview + progress tabs
+    let html = `<button class="progress-tab ${currentTabIndex === 0 ? 'active' : ''}" data-tab-index="0">Overview</button>`;
+
+    tabs.forEach((tab, index) => {
+        const tabIndex = index + 1;
+        html += `
+            <button class="progress-tab ${currentTabIndex === tabIndex ? 'active' : ''}" data-tab-index="${tabIndex}">
+                <span class="tab-name">${escapeHtml(tab.tabName)}</span>
+                <span class="tab-delete" data-tab-id="${tab.id}" title="Delete tab">&times;</span>
+            </button>
+        `;
+    });
+
+    container.innerHTML = html;
+
+    // Add click listeners
+    container.querySelectorAll('.progress-tab').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // Don't switch tabs if clicking delete button
+            if (e.target.classList.contains('tab-delete')) return;
+            const index = parseInt(btn.dataset.tabIndex);
+            switchProgressTab(index);
+        });
+    });
+
+    // Add delete button listeners
+    container.querySelectorAll('.tab-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const tabId = btn.dataset.tabId;
+            showDeleteTabModal(tabId);
+        });
+    });
+}
+
+// Switch between Overview and progress tabs
+function switchProgressTab(index) {
+    currentTabIndex = index;
+
+    const overviewContent = document.getElementById('tabContentOverview');
+    const progressContent = document.getElementById('tabContentProgress');
+
+    if (index === 0) {
+        // Show Overview
+        if (overviewContent) overviewContent.hidden = false;
+        if (progressContent) progressContent.hidden = true;
+    } else {
+        // Show progress tab
+        if (overviewContent) overviewContent.hidden = true;
+        if (progressContent) progressContent.hidden = false;
+
+        const tabs = getProjectProgressTabs();
+        const tab = tabs[index - 1];
+        if (tab) {
+            populateProgressTab(tab);
+        }
+    }
+
+    // Update active tab in UI
+    document.querySelectorAll('.progress-tab').forEach((btn, i) => {
+        btn.classList.toggle('active', parseInt(btn.dataset.tabIndex) === index);
+    });
+}
+
+// Populate progress tab content
+function populateProgressTab(tab) {
+    // Set tab name
+    const nameEl = document.getElementById('progressTabName');
+    if (nameEl) nameEl.textContent = tab.tabName;
+
+    // Set linked task if exists
+    const linkedTaskContainer = document.getElementById('progressLinkedTask');
+    const linkedTaskText = document.getElementById('linkedTaskText');
+    if (tab.linkedTaskId !== null && tab.linkedTaskText) {
+        if (linkedTaskContainer) linkedTaskContainer.hidden = false;
+        if (linkedTaskText) linkedTaskText.textContent = tab.linkedTaskText;
+    } else {
+        if (linkedTaskContainer) linkedTaskContainer.hidden = true;
+    }
+
+    // Setup gallery
+    setupProgressGallery(tab.images || []);
+
+    // Update image count
+    updateProgressImageCount(tab);
+
+    // Populate text fields
+    document.getElementById('progressDoneText').value = tab.doneText || '';
+    document.getElementById('progressUnsureText').value = tab.unsureText || '';
+    document.getElementById('progressNotWorkingText').value = tab.notWorkingText || '';
+
+    // Reset auto-save indicator
+    const indicator = document.getElementById('autoSaveIndicator');
+    if (indicator) indicator.textContent = '';
+}
+
+// Setup progress gallery
+function setupProgressGallery(images) {
+    const mainImg = document.getElementById('progressMainImage');
+    const noImages = document.getElementById('progressNoImages');
+    const prevBtn = document.getElementById('progressPrevBtn');
+    const nextBtn = document.getElementById('progressNextBtn');
+    const thumbsContainer = document.getElementById('progressThumbnails');
+
+    thumbsContainer.innerHTML = '';
+    currentProgressImageIndex = 0;
+
+    if (!images || images.length === 0) {
+        mainImg.style.display = 'none';
+        noImages.style.display = 'block';
+        prevBtn.hidden = true;
+        nextBtn.hidden = true;
+        return;
+    }
+
+    mainImg.style.display = 'block';
+    noImages.style.display = 'none';
+    mainImg.src = images[0];
+
+    if (images.length > 1) {
+        prevBtn.hidden = false;
+        nextBtn.hidden = false;
+
+        images.forEach((src, index) => {
+            const thumb = document.createElement('div');
+            thumb.className = 'pv-thumb' + (index === 0 ? ' active' : '');
+            thumb.innerHTML = `<img src="${src}" alt="Thumbnail ${index + 1}">`;
+            thumb.addEventListener('click', () => selectProgressImage(index));
+            thumbsContainer.appendChild(thumb);
+        });
+    } else {
+        prevBtn.hidden = true;
+        nextBtn.hidden = true;
+    }
+}
+
+// Select progress image
+function selectProgressImage(index) {
+    const tabs = getProjectProgressTabs();
+    const tab = tabs[currentTabIndex - 1];
+    if (!tab?.images) return;
+
+    const images = tab.images;
+    if (index < 0 || index >= images.length) return;
+
+    currentProgressImageIndex = index;
+    document.getElementById('progressMainImage').src = images[index];
+
+    document.querySelectorAll('#progressThumbnails .pv-thumb').forEach((thumb, i) => {
+        thumb.classList.toggle('active', i === index);
+    });
+}
+
+// Navigate progress gallery
+function navigateProgressGallery(direction) {
+    const tabs = getProjectProgressTabs();
+    const tab = tabs[currentTabIndex - 1];
+    if (!tab?.images) return;
+
+    const images = tab.images;
+    let newIndex = currentProgressImageIndex + direction;
+    if (newIndex < 0) newIndex = images.length - 1;
+    if (newIndex >= images.length) newIndex = 0;
+    selectProgressImage(newIndex);
+}
+
+// Update progress image count display
+function updateProgressImageCount(tab) {
+    const countEl = document.getElementById('progressImageCount');
+    if (!countEl) return;
+
+    const tabCount = tab?.images?.length || 0;
+    const totalCount = getTotalProjectImageCount();
+    const maxImages = window.IMAGE_CONFIG?.maxImages || 50;
+
+    if (tabCount > 0) {
+        countEl.textContent = `${tabCount} in this tab (${totalCount}/${maxImages} total)`;
+    } else {
+        countEl.textContent = `${totalCount}/${maxImages} total`;
+    }
+}
+
+// Handle progress image upload
+async function handleProgressImageUpload(e) {
+    if (!currentProject || currentTabIndex === 0) {
+        alert('Please select a progress tab first');
+        return;
+    }
+
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const maxImages = window.IMAGE_CONFIG?.maxImages || 50;
+    const totalImages = getTotalProjectImageCount();
+
+    // Check if we'd exceed the limit
+    if (totalImages + files.length > maxImages) {
+        alert(`Maximum ${maxImages} images total. You can add ${maxImages - totalImages} more.`);
+        e.target.value = '';
+        return;
+    }
+
+    // Validate files
+    const validFiles = [];
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+            alert(`"${file.name}" is not an image.`);
+            continue;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            alert(`"${file.name}" is too large. Maximum size is 5MB.`);
+            continue;
+        }
+        validFiles.push(file);
+    }
+
+    if (validFiles.length === 0) {
+        e.target.value = '';
+        return;
+    }
+
+    // Show loading state
+    const addBtn = document.getElementById('addProgressImagesBtn');
+    const originalText = addBtn.innerHTML;
+    addBtn.innerHTML = '<span class="btn-icon">...</span><span class="btn-label">Uploading...</span>';
+    addBtn.disabled = true;
+
+    try {
+        // Compress images
+        const compressedImages = await window.compressImages(validFiles);
+
+        // Get current tab
+        const tabs = getProjectProgressTabs();
+        const tabIndex = currentTabIndex - 1;
+        const tab = tabs[tabIndex];
+
+        if (!tab) {
+            throw new Error('Tab not found');
+        }
+
+        // Add images to tab
+        const currentImages = tab.images || [];
+        tab.images = [...currentImages, ...compressedImages];
+        tab._lastModified = new Date().toISOString();
+
+        // Save and sync
+        allProgressTabs[currentProject.projectName] = tabs;
+        localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+        await syncProgressTabsToFirebase(currentProject.projectName, tabs);
+
+        // Log the change
+        const user = getCurrentUser();
+        logChange(currentProject.projectName, user, 'updated', `Added ${compressedImages.length} screenshot(s) to "${tab.tabName}"`);
+
+        // Refresh gallery
+        setupProgressGallery(tab.images);
+        updateProgressImageCount(tab);
+
+        console.log('Progress images added. Tab total:', tab.images.length);
+
+    } catch (error) {
+        console.error('Progress image upload error:', error);
+        alert('Failed to upload images. Please try again.');
+    }
+
+    // Reset
+    addBtn.innerHTML = originalText;
+    addBtn.disabled = false;
+    e.target.value = '';
+}
+
+// Save progress fields
+async function saveProgressFields() {
+    if (!currentProject || currentTabIndex === 0) return;
+
+    const tabs = getProjectProgressTabs();
+    const tabIndex = currentTabIndex - 1;
+    const tab = tabs[tabIndex];
+
+    if (!tab) return;
+
+    // Get values
+    tab.doneText = document.getElementById('progressDoneText').value.trim();
+    tab.unsureText = document.getElementById('progressUnsureText').value.trim();
+    tab.notWorkingText = document.getElementById('progressNotWorkingText').value.trim();
+    tab._lastModified = new Date().toISOString();
+
+    // Save and sync
+    allProgressTabs[currentProject.projectName] = tabs;
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    await syncProgressTabsToFirebase(currentProject.projectName, tabs);
+
+    // Update indicator
+    const indicator = document.getElementById('autoSaveIndicator');
+    if (indicator) {
+        indicator.textContent = 'Saved';
+        setTimeout(() => { indicator.textContent = ''; }, 2000);
+    }
+
+    console.log('Progress fields saved for tab:', tab.tabName);
+}
+
+// Auto-save progress fields with debounce
+function autoSaveProgressFields() {
+    if (progressFieldsDebounceTimer) {
+        clearTimeout(progressFieldsDebounceTimer);
+    }
+
+    // Update indicator
+    const indicator = document.getElementById('autoSaveIndicator');
+    if (indicator) indicator.textContent = 'Saving...';
+
+    progressFieldsDebounceTimer = setTimeout(() => {
+        saveProgressFields();
+    }, 2000);
+}
+
+// ==========================================
+// Add Tab Modal
+// ==========================================
+
+function setupAddTabModal() {
+    const modal = document.getElementById('addTabModal');
+    const backdrop = document.getElementById('addTabModalBackdrop');
+    const closeBtn = document.getElementById('addTabModalClose');
+    const cancelBtn = document.getElementById('addTabCancelBtn');
+    const confirmBtn = document.getElementById('addTabConfirmBtn');
+
+    if (!modal) return;
+
+    // Close modal handlers
+    backdrop?.addEventListener('click', hideAddTabModal);
+    closeBtn?.addEventListener('click', hideAddTabModal);
+    cancelBtn?.addEventListener('click', hideAddTabModal);
+    confirmBtn?.addEventListener('click', createProgressTab);
+}
+
+function showAddTabModal() {
+    if (!currentProject) return;
+
+    const modal = document.getElementById('addTabModal');
+    const nameInput = document.getElementById('newTabName');
+    const taskSelect = document.getElementById('linkTaskSelect');
+
+    // Clear previous input
+    if (nameInput) nameInput.value = '';
+
+    // Populate task dropdown
+    if (taskSelect) {
+        const tasks = getProjectTasks();
+        taskSelect.innerHTML = '<option value="">No linked task</option>';
+        tasks.forEach((task, index) => {
+            if (!task.completed) {
+                taskSelect.innerHTML += `<option value="${index}">${escapeHtml(task.text)}</option>`;
+            }
+        });
+    }
+
+    if (modal) modal.hidden = false;
+
+    // Focus name input
+    if (nameInput) setTimeout(() => nameInput.focus(), 100);
+}
+
+function hideAddTabModal() {
+    const modal = document.getElementById('addTabModal');
+    if (modal) modal.hidden = true;
+}
+
+async function createProgressTab() {
+    if (!currentProject) return;
+
+    const nameInput = document.getElementById('newTabName');
+    const taskSelect = document.getElementById('linkTaskSelect');
+
+    const tabName = nameInput?.value.trim();
+    if (!tabName) {
+        alert('Please enter a tab name');
+        return;
+    }
+
+    // Get linked task info
+    let linkedTaskId = null;
+    let linkedTaskText = null;
+    if (taskSelect && taskSelect.value) {
+        linkedTaskId = parseInt(taskSelect.value);
+        const tasks = getProjectTasks();
+        if (tasks[linkedTaskId]) {
+            linkedTaskText = tasks[linkedTaskId].text;
+        }
+    }
+
+    // Create new tab
+    const tabs = getProjectProgressTabs();
+    const newTab = {
+        id: 'tab_' + generateId(),
+        projectName: currentProject.projectName,
+        tabName: tabName,
+        linkedTaskId: linkedTaskId,
+        linkedTaskText: linkedTaskText,
+        order: tabs.length + 1,
+        images: [],
+        doneText: '',
+        unsureText: '',
+        notWorkingText: '',
+        createdAt: new Date().toISOString(),
+        _lastModified: new Date().toISOString(),
+        _version: 1
+    };
+
+    tabs.push(newTab);
+
+    // Save and sync
+    allProgressTabs[currentProject.projectName] = tabs;
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    await syncProgressTabsToFirebase(currentProject.projectName, tabs);
+
+    // Log the change
+    const user = getCurrentUser();
+    logChange(currentProject.projectName, user, 'created', `Created progress tab "${tabName}"`);
+
+    // Render tabs and switch to new tab
+    renderProgressTabs();
+    switchProgressTab(tabs.length); // Switch to the new tab
+
+    // Hide modal
+    hideAddTabModal();
+
+    console.log('Created progress tab:', tabName);
+}
+
+// ==========================================
+// Delete Tab Modal
+// ==========================================
+
+let tabToDelete = null;
+
+function setupDeleteTabModal() {
+    const modal = document.getElementById('deleteTabModal');
+    const backdrop = document.getElementById('deleteTabModalBackdrop');
+    const closeBtn = document.getElementById('deleteTabModalClose');
+    const cancelBtn = document.getElementById('deleteTabCancelBtn');
+    const confirmBtn = document.getElementById('deleteTabConfirmBtn');
+
+    if (!modal) return;
+
+    // Close modal handlers
+    backdrop?.addEventListener('click', hideDeleteTabModal);
+    closeBtn?.addEventListener('click', hideDeleteTabModal);
+    cancelBtn?.addEventListener('click', hideDeleteTabModal);
+    confirmBtn?.addEventListener('click', confirmDeleteProgressTab);
+}
+
+function showDeleteTabModal(tabId) {
+    tabToDelete = tabId;
+    const modal = document.getElementById('deleteTabModal');
+    const nameSpan = document.getElementById('deleteTabName');
+
+    // Find tab name
+    const tabs = getProjectProgressTabs();
+    const tab = tabs.find(t => t.id === tabId);
+
+    if (nameSpan && tab) nameSpan.textContent = tab.tabName;
+    if (modal) modal.hidden = false;
+}
+
+function hideDeleteTabModal() {
+    const modal = document.getElementById('deleteTabModal');
+    if (modal) modal.hidden = true;
+    tabToDelete = null;
+}
+
+async function confirmDeleteProgressTab() {
+    if (!tabToDelete || !currentProject) return;
+
+    const tabs = getProjectProgressTabs();
+    const tabIndex = tabs.findIndex(t => t.id === tabToDelete);
+
+    if (tabIndex === -1) {
+        hideDeleteTabModal();
+        return;
+    }
+
+    const deletedTab = tabs[tabIndex];
+
+    // Remove tab
+    tabs.splice(tabIndex, 1);
+
+    // Save and sync
+    allProgressTabs[currentProject.projectName] = tabs;
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    await syncProgressTabsToFirebase(currentProject.projectName, tabs);
+
+    // Log the change
+    const user = getCurrentUser();
+    logChange(currentProject.projectName, user, 'deleted', `Deleted progress tab "${deletedTab.tabName}"`);
+
+    // If we were on this tab, switch to Overview
+    if (currentTabIndex === tabIndex + 1) {
+        switchProgressTab(0);
+    } else if (currentTabIndex > tabIndex + 1) {
+        // Adjust current tab index
+        currentTabIndex--;
+    }
+
+    // Render tabs
+    renderProgressTabs();
+
+    // Hide modal
+    hideDeleteTabModal();
+
+    console.log('Deleted progress tab:', deletedTab.tabName);
 }

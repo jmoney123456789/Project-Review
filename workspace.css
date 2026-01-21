@@ -1655,3 +1655,355 @@
     color: var(--text-muted);
     margin-top: 0.25rem;
 }
+
+/* ==========================================
+   PROGRESS TABS
+   ========================================== */
+
+/* Tab Bar */
+.progress-tabs-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0.5rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+}
+
+.progress-tabs-scroll {
+    display: flex;
+    gap: 0.35rem;
+    overflow-x: auto;
+    flex: 1;
+    padding: 0.25rem 0;
+    scrollbar-width: thin;
+}
+
+.progress-tabs-scroll::-webkit-scrollbar {
+    height: 4px;
+}
+
+.progress-tabs-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+/* Individual Tab */
+.progress-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.progress-tab:hover {
+    background: var(--grey-dark);
+    color: var(--text-primary);
+    border-color: var(--grey-mid);
+}
+
+.progress-tab.active {
+    background: var(--white);
+    color: var(--black);
+    border-color: var(--white);
+}
+
+.progress-tab .tab-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.progress-tab .tab-delete {
+    display: none;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--grey-mid);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: var(--transition);
+}
+
+.progress-tab:hover .tab-delete {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress-tab .tab-delete:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.progress-tab.active .tab-delete {
+    color: var(--grey-dark);
+}
+
+.progress-tab.active .tab-delete:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+/* Add Tab Button */
+.progress-tabs-add {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.progress-tabs-add:hover {
+    background: var(--grey-dark);
+    border-color: var(--grey-mid);
+    color: var(--text-primary);
+}
+
+/* Progress Tab Content */
+.tab-content-progress {
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Progress Tab Header */
+.progress-tab-header {
+    margin-bottom: 1rem;
+}
+
+.progress-tab-header h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem 0;
+}
+
+.progress-tab-linked-task {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.linked-task-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.linked-task-text {
+    font-size: 0.85rem;
+    color: var(--accent);
+}
+
+/* Progress Gallery */
+.progress-gallery {
+    margin-bottom: 1.5rem;
+}
+
+/* Progress Text Fields */
+.progress-fields {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.progress-field {
+    margin-bottom: 1rem;
+}
+
+.progress-field:last-of-type {
+    margin-bottom: 0.75rem;
+}
+
+.progress-field label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--grey-mid);
+    margin-bottom: 0.5rem;
+}
+
+.progress-field textarea {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    resize: vertical;
+    min-height: 80px;
+    transition: border-color 0.2s ease;
+}
+
+.progress-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.progress-field textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.progress-field-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 1rem;
+    padding-top: 0.5rem;
+}
+
+.auto-save-indicator {
+    font-size: 0.75rem;
+    color: var(--success);
+    font-style: italic;
+}
+
+/* Progress Tab Actions */
+.progress-tab-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 0.5rem;
+}
+
+.btn-delete-tab {
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius-sm);
+    color: #ef4444;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-delete-tab:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+}
+
+/* Modal Form Group */
+.modal .form-group {
+    margin-bottom: 1rem;
+    text-align: left;
+}
+
+.modal .form-group label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+}
+
+.modal .form-group input[type="text"],
+.modal .form-group select {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+}
+
+.modal .form-group input[type="text"]:focus,
+.modal .form-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal .form-group input[type="text"]::placeholder {
+    color: var(--text-muted);
+}
+
+.modal .btn-save {
+    padding: 0.6rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    background: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--black);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.modal .btn-save:hover {
+    background: var(--grey-light);
+}
+
+/* ==========================================
+   PROGRESS TABS RESPONSIVE
+   ========================================== */
+
+@media (max-width: 900px) {
+    .progress-tabs-bar {
+        margin-bottom: 1rem;
+    }
+
+    .progress-tab {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.75rem;
+    }
+
+    .progress-tab .tab-name {
+        max-width: 80px;
+    }
+
+    .progress-tabs-add {
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+    }
+
+    .progress-fields {
+        padding: 1rem;
+    }
+
+    .progress-field textarea {
+        min-height: 60px;
+    }
+}

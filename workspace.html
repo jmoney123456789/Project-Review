@@ -88,6 +88,16 @@
                 </div>
                 <span id="pvCreator" hidden></span>
 
+                <!-- Progress Tabs Bar -->
+                <div class="progress-tabs-bar" id="progressTabsBar">
+                    <div class="progress-tabs-scroll" id="progressTabsScroll">
+                        <!-- Tabs rendered dynamically -->
+                    </div>
+                    <button class="progress-tabs-add" id="addProgressTabBtn" title="Add progress tab">+</button>
+                </div>
+
+                <!-- Tab Content: Overview (default view) -->
+                <div class="tab-content-overview" id="tabContentOverview">
                 <!-- Image Gallery + Notes Side by Side -->
                 <div class="project-media-row">
                     <!-- Image Gallery -->
@@ -171,6 +181,65 @@
                         </form>
                     </div>
                 </div>
+                </div><!-- End tab-content-overview -->
+
+                <!-- Tab Content: Progress (hidden by default) -->
+                <div class="tab-content-progress" id="tabContentProgress" hidden>
+                    <!-- Progress Tab Header -->
+                    <div class="progress-tab-header">
+                        <h3 id="progressTabName">Progress Tab</h3>
+                        <div class="progress-tab-linked-task" id="progressLinkedTask" hidden>
+                            <span class="linked-task-label">Linked to:</span>
+                            <span class="linked-task-text" id="linkedTaskText"></span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Screenshot Gallery -->
+                    <div class="pv-gallery progress-gallery">
+                        <div class="pv-gallery-main">
+                            <img id="progressMainImage" src="" alt="Progress screenshot" style="display: none;">
+                            <button class="pv-gallery-nav pv-prev" id="progressPrevBtn" hidden>&lt;</button>
+                            <button class="pv-gallery-nav pv-next" id="progressNextBtn" hidden>&gt;</button>
+                            <div class="pv-no-images" id="progressNoImages" style="display: block;">
+                                <span>No screenshots in this tab</span>
+                            </div>
+                        </div>
+                        <div class="pv-thumbnails" id="progressThumbnails"></div>
+                        <div class="pv-gallery-upload">
+                            <input type="file" id="progressFileInput" multiple accept="image/*" hidden>
+                            <button class="btn-add-images" id="addProgressImagesBtn" title="Add screenshots">
+                                <span class="btn-icon">+</span>
+                                <span class="btn-label">Add Screenshots</span>
+                            </button>
+                            <span class="image-count" id="progressImageCount"></span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Text Fields -->
+                    <div class="progress-fields">
+                        <div class="progress-field">
+                            <label for="progressDoneText">What I've gotten done</label>
+                            <textarea id="progressDoneText" placeholder="Describe your completed work..." rows="4"></textarea>
+                        </div>
+                        <div class="progress-field">
+                            <label for="progressUnsureText">What I'm still not sure about</label>
+                            <textarea id="progressUnsureText" placeholder="Questions or uncertainties..." rows="4"></textarea>
+                        </div>
+                        <div class="progress-field">
+                            <label for="progressNotWorkingText">What isn't going to work</label>
+                            <textarea id="progressNotWorkingText" placeholder="Issues or things to reconsider..." rows="4"></textarea>
+                        </div>
+                        <div class="progress-field-actions">
+                            <span class="auto-save-indicator" id="autoSaveIndicator"></span>
+                            <button class="btn-small btn-save" id="saveProgressFieldsBtn">Save</button>
+                        </div>
+                    </div>
+
+                    <!-- Delete Progress Tab -->
+                    <div class="progress-tab-actions">
+                        <button class="btn-delete-tab" id="deleteProgressTabBtn">Delete This Tab</button>
+                    </div>
+                </div>
             </div>
         </main>
 
@@ -249,6 +318,53 @@
                 <div class="modal-actions">
                     <button class="btn-cancel" id="deleteCancelBtn">Cancel</button>
                     <button class="btn-delete" id="deleteConfirmBtn">Delete Project</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Progress Tab Modal -->
+    <div class="modal" id="addTabModal" hidden>
+        <div class="modal-backdrop" id="addTabModalBackdrop"></div>
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>New Progress Tab</h2>
+                <button class="modal-close" id="addTabModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newTabName">Tab Name</label>
+                    <input type="text" id="newTabName" placeholder="e.g., Week 1 Progress" maxlength="50">
+                </div>
+                <div class="form-group">
+                    <label for="linkTaskSelect">Link to Task (optional)</label>
+                    <select id="linkTaskSelect">
+                        <option value="">No linked task</option>
+                        <!-- Tasks loaded dynamically -->
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="addTabCancelBtn">Cancel</button>
+                    <button class="btn-save" id="addTabConfirmBtn">Create Tab</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Progress Tab Confirmation Modal -->
+    <div class="modal" id="deleteTabModal" hidden>
+        <div class="modal-backdrop" id="deleteTabModalBackdrop"></div>
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Delete Progress Tab</h2>
+                <button class="modal-close" id="deleteTabModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="delete-warning">Are you sure you want to delete "<span id="deleteTabName"></span>"?</p>
+                <p class="delete-subtext">This will permanently delete all screenshots and notes in this tab.</p>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="deleteTabCancelBtn">Cancel</button>
+                    <button class="btn-delete" id="deleteTabConfirmBtn">Delete Tab</button>
                 </div>
             </div>
         </div>
