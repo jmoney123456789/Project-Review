@@ -961,6 +961,11 @@ function setupEventListeners() {
                 hideDeleteFileModal();
                 return;
             }
+            const deleteImageModal = document.getElementById('deleteImageModal');
+            if (deleteImageModal && !deleteImageModal.hidden) {
+                hideDeleteImageModal();
+                return;
+            }
             if (filesDropdown && !filesDropdown.hidden) {
                 filesDropdown.hidden = true;
                 return;
@@ -1027,6 +1032,21 @@ function setupEventListeners() {
     // Setup file modals
     setupFileViewerModal();
     setupDeleteFileModal();
+
+    // Delete image buttons
+    document.getElementById('pvDeleteBtn')?.addEventListener('click', () => {
+        showDeleteImageModal('overview', currentImageIndex);
+    });
+    document.getElementById('progressDeleteBtn')?.addEventListener('click', () => {
+        showDeleteImageModal('progress', currentProgressImageIndex);
+    });
+
+    // Image notes with auto-save
+    document.getElementById('pvImageNote')?.addEventListener('input', saveOverviewImageNote);
+    document.getElementById('progressImageNote')?.addEventListener('input', saveProgressImageNote);
+
+    // Setup delete image modal
+    setupDeleteImageModal();
 }
 
 // ==========================================
@@ -1462,6 +1482,7 @@ function setupGallery(images) {
     const noImages = document.getElementById('pvNoImages');
     const prevBtn = document.getElementById('pvPrevBtn');
     const nextBtn = document.getElementById('pvNextBtn');
+    const deleteBtn = document.getElementById('pvDeleteBtn');
     const thumbsContainer = document.getElementById('pvThumbnails');
 
     thumbsContainer.innerHTML = '';
@@ -1471,22 +1492,29 @@ function setupGallery(images) {
         noImages.style.display = 'block';
         prevBtn.hidden = true;
         nextBtn.hidden = true;
+        if (deleteBtn) deleteBtn.hidden = true;
+        loadOverviewImageNote();
         return;
     }
 
     mainImg.style.display = 'block';
     noImages.style.display = 'none';
-    mainImg.src = images[0];
+    if (deleteBtn) deleteBtn.hidden = false;
+
+    // Get first image (handle both string and object format)
+    const firstImg = getImageData(images, 0);
+    mainImg.src = firstImg.src;
     currentImageIndex = 0;
 
     if (images.length > 1) {
         prevBtn.hidden = false;
         nextBtn.hidden = false;
 
-        images.forEach((src, index) => {
+        images.forEach((img, index) => {
+            const imgData = getImageData(images, index);
             const thumb = document.createElement('div');
             thumb.className = 'pv-thumb' + (index === 0 ? ' active' : '');
-            thumb.innerHTML = `<img src="${src}" alt="Thumbnail ${index + 1}">`;
+            thumb.innerHTML = `<img src="${imgData.src}" alt="Thumbnail ${index + 1}">`;
             thumb.addEventListener('click', () => selectImage(index));
             thumbsContainer.appendChild(thumb);
         });
@@ -1494,6 +1522,9 @@ function setupGallery(images) {
         prevBtn.hidden = true;
         nextBtn.hidden = true;
     }
+
+    // Load note for first image
+    loadOverviewImageNote();
 }
 
 function selectImage(index) {
@@ -1502,11 +1533,15 @@ function selectImage(index) {
     if (index < 0 || index >= images.length) return;
 
     currentImageIndex = index;
-    document.getElementById('pvMainImage').src = images[index];
+    const imgData = getImageData(images, index);
+    document.getElementById('pvMainImage').src = imgData.src;
 
-    document.querySelectorAll('.pv-thumb').forEach((thumb, i) => {
+    document.querySelectorAll('#pvThumbnails .pv-thumb').forEach((thumb, i) => {
         thumb.classList.toggle('active', i === index);
     });
+
+    // Load note for selected image
+    loadOverviewImageNote();
 }
 
 function navigateGallery(direction) {
@@ -2258,6 +2293,7 @@ function setupProgressGallery(images) {
     const noImages = document.getElementById('progressNoImages');
     const prevBtn = document.getElementById('progressPrevBtn');
     const nextBtn = document.getElementById('progressNextBtn');
+    const deleteBtn = document.getElementById('progressDeleteBtn');
     const thumbsContainer = document.getElementById('progressThumbnails');
 
     thumbsContainer.innerHTML = '';
@@ -2268,21 +2304,28 @@ function setupProgressGallery(images) {
         noImages.style.display = 'block';
         prevBtn.hidden = true;
         nextBtn.hidden = true;
+        if (deleteBtn) deleteBtn.hidden = true;
+        loadProgressImageNote();
         return;
     }
 
     mainImg.style.display = 'block';
     noImages.style.display = 'none';
-    mainImg.src = images[0];
+    if (deleteBtn) deleteBtn.hidden = false;
+
+    // Get first image (handle both string and object format)
+    const firstImg = getImageData(images, 0);
+    mainImg.src = firstImg.src;
 
     if (images.length > 1) {
         prevBtn.hidden = false;
         nextBtn.hidden = false;
 
-        images.forEach((src, index) => {
+        images.forEach((img, index) => {
+            const imgData = getImageData(images, index);
             const thumb = document.createElement('div');
             thumb.className = 'pv-thumb' + (index === 0 ? ' active' : '');
-            thumb.innerHTML = `<img src="${src}" alt="Thumbnail ${index + 1}">`;
+            thumb.innerHTML = `<img src="${imgData.src}" alt="Thumbnail ${index + 1}">`;
             thumb.addEventListener('click', () => selectProgressImage(index));
             thumbsContainer.appendChild(thumb);
         });
@@ -2290,6 +2333,9 @@ function setupProgressGallery(images) {
         prevBtn.hidden = true;
         nextBtn.hidden = true;
     }
+
+    // Load note for first image
+    loadProgressImageNote();
 }
 
 // Select progress image
@@ -2302,11 +2348,15 @@ function selectProgressImage(index) {
     if (index < 0 || index >= images.length) return;
 
     currentProgressImageIndex = index;
-    document.getElementById('progressMainImage').src = images[index];
+    const imgData = getImageData(images, index);
+    document.getElementById('progressMainImage').src = imgData.src;
 
     document.querySelectorAll('#progressThumbnails .pv-thumb').forEach((thumb, i) => {
         thumb.classList.toggle('active', i === index);
     });
+
+    // Load note for selected image
+    loadProgressImageNote();
 }
 
 // Navigate progress gallery
@@ -2676,6 +2726,8 @@ async function confirmDeleteProgressTab() {
 
 let fileToDelete = null;
 let currentViewingFile = null;
+let imageToDelete = null; // { type: 'overview' | 'progress', index: number }
+let imageNoteDebounceTimer = null;
 
 // Toggle files dropdown
 function toggleFilesDropdown() {
@@ -2952,4 +3004,293 @@ async function confirmDeleteFile() {
     hideDeleteFileModal();
 
     console.log('Deleted file:', deletedFile.fileName);
+}
+
+// ==========================================
+// Delete Image Functions
+// ==========================================
+
+function setupDeleteImageModal() {
+    const modal = document.getElementById('deleteImageModal');
+    const backdrop = document.getElementById('deleteImageModalBackdrop');
+    const closeBtn = document.getElementById('deleteImageModalClose');
+    const cancelBtn = document.getElementById('deleteImageCancelBtn');
+    const confirmBtn = document.getElementById('deleteImageConfirmBtn');
+
+    if (!modal) return;
+
+    backdrop?.addEventListener('click', hideDeleteImageModal);
+    closeBtn?.addEventListener('click', hideDeleteImageModal);
+    cancelBtn?.addEventListener('click', hideDeleteImageModal);
+    confirmBtn?.addEventListener('click', confirmDeleteImage);
+}
+
+function showDeleteImageModal(type, index) {
+    imageToDelete = { type, index };
+    const modal = document.getElementById('deleteImageModal');
+    if (modal) modal.hidden = false;
+}
+
+function hideDeleteImageModal() {
+    const modal = document.getElementById('deleteImageModal');
+    if (modal) modal.hidden = true;
+    imageToDelete = null;
+}
+
+async function confirmDeleteImage() {
+    if (!imageToDelete || !currentProject) return;
+
+    const { type, index } = imageToDelete;
+
+    if (type === 'overview') {
+        await deleteOverviewImage(index);
+    } else if (type === 'progress') {
+        await deleteProgressImage(index);
+    }
+
+    hideDeleteImageModal();
+}
+
+async function deleteOverviewImage(index) {
+    if (!currentProject) return;
+
+    // Get current images (handle both old format and new format with notes)
+    let images = currentProject.images || [];
+    if (index < 0 || index >= images.length) return;
+
+    // Remove image
+    images.splice(index, 1);
+
+    const now = new Date().toISOString();
+    const updatedProject = {
+        ...currentProject,
+        images: images,
+        _lastModified: now,
+        _version: (currentProject._version || 0) + 1
+    };
+
+    // Update in allProjects
+    allProjects = allProjects.map(p => {
+        if (p.projectName === currentProject.projectName) {
+            return updatedProject;
+        }
+        return p;
+    });
+
+    // Update currentProject reference
+    currentProject = updatedProject;
+
+    // Save to localStorage
+    const combined = [...allProjects, ...allFeedback];
+    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+    // Update image cache
+    cacheProjectImages(currentProject.projectName, images);
+
+    // Sync to Firebase
+    await syncProjectToFirebase(updatedProject);
+
+    // Log the change
+    const user = getCurrentUser();
+    logChange(currentProject.projectName, user, 'deleted', 'Deleted a screenshot');
+
+    // Adjust current image index if needed
+    if (currentImageIndex >= images.length) {
+        currentImageIndex = Math.max(0, images.length - 1);
+    }
+
+    // Refresh gallery
+    setupGallery(images);
+    updateImageCount();
+
+    console.log('Deleted overview image. Remaining:', images.length);
+}
+
+async function deleteProgressImage(index) {
+    if (!currentProject || currentTabIndex === 0) return;
+
+    const tabs = getProjectProgressTabs();
+    const tabIndex = currentTabIndex - 1;
+    const tab = tabs[tabIndex];
+
+    if (!tab || !tab.images) return;
+    if (index < 0 || index >= tab.images.length) return;
+
+    // Remove image
+    tab.images.splice(index, 1);
+    tab._lastModified = new Date().toISOString();
+
+    // Save and sync
+    allProgressTabs[currentProject.projectName] = tabs;
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    await syncProgressTabsToFirebase(currentProject.projectName, tabs);
+
+    // Log the change
+    const user = getCurrentUser();
+    logChange(currentProject.projectName, user, 'deleted', `Deleted a screenshot from "${tab.tabName}"`);
+
+    // Adjust current image index if needed
+    if (currentProgressImageIndex >= tab.images.length) {
+        currentProgressImageIndex = Math.max(0, tab.images.length - 1);
+    }
+
+    // Refresh gallery
+    setupProgressGallery(tab.images);
+    updateProgressImageCount(tab);
+
+    console.log('Deleted progress image. Remaining:', tab.images.length);
+}
+
+// ==========================================
+// Image Notes Functions
+// ==========================================
+
+// Get image data (handles both old string format and new object format)
+function getImageData(images, index) {
+    if (!images || index < 0 || index >= images.length) {
+        return { src: '', note: '' };
+    }
+    const img = images[index];
+    if (typeof img === 'string') {
+        return { src: img, note: '' };
+    }
+    return { src: img.src || '', note: img.note || '' };
+}
+
+// Set image note for overview gallery
+function setOverviewImageNote(index, note) {
+    if (!currentProject || !currentProject.images) return;
+
+    let images = currentProject.images;
+    if (index < 0 || index >= images.length) return;
+
+    // Convert to object format if needed
+    if (typeof images[index] === 'string') {
+        images[index] = { src: images[index], note: note };
+    } else {
+        images[index].note = note;
+    }
+
+    // Update project
+    currentProject.images = images;
+    currentProject._lastModified = new Date().toISOString();
+
+    // Update in allProjects
+    allProjects = allProjects.map(p => {
+        if (p.projectName === currentProject.projectName) {
+            return currentProject;
+        }
+        return p;
+    });
+
+    // Save locally
+    const combined = [...allProjects, ...allFeedback];
+    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+    // Sync to Firebase (debounced in calling function)
+    return currentProject;
+}
+
+// Set image note for progress gallery
+function setProgressImageNote(index, note) {
+    if (!currentProject || currentTabIndex === 0) return;
+
+    const tabs = getProjectProgressTabs();
+    const tabIndex = currentTabIndex - 1;
+    const tab = tabs[tabIndex];
+
+    if (!tab || !tab.images) return;
+    if (index < 0 || index >= tab.images.length) return;
+
+    // Convert to object format if needed
+    if (typeof tab.images[index] === 'string') {
+        tab.images[index] = { src: tab.images[index], note: note };
+    } else {
+        tab.images[index].note = note;
+    }
+
+    tab._lastModified = new Date().toISOString();
+
+    // Save locally
+    allProgressTabs[currentProject.projectName] = tabs;
+    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+
+    return tabs;
+}
+
+// Save overview image note with debounce
+function saveOverviewImageNote() {
+    if (imageNoteDebounceTimer) {
+        clearTimeout(imageNoteDebounceTimer);
+    }
+
+    imageNoteDebounceTimer = setTimeout(async () => {
+        const noteInput = document.getElementById('pvImageNote');
+        if (!noteInput || !currentProject) return;
+
+        const note = noteInput.value.trim();
+        const updatedProject = setOverviewImageNote(currentImageIndex, note);
+
+        if (updatedProject) {
+            await syncProjectToFirebase(updatedProject);
+            console.log('Saved image note for overview image', currentImageIndex);
+        }
+    }, 1000);
+}
+
+// Save progress image note with debounce
+function saveProgressImageNote() {
+    if (imageNoteDebounceTimer) {
+        clearTimeout(imageNoteDebounceTimer);
+    }
+
+    imageNoteDebounceTimer = setTimeout(async () => {
+        const noteInput = document.getElementById('progressImageNote');
+        if (!noteInput || !currentProject || currentTabIndex === 0) return;
+
+        const note = noteInput.value.trim();
+        const tabs = setProgressImageNote(currentProgressImageIndex, note);
+
+        if (tabs) {
+            await syncProgressTabsToFirebase(currentProject.projectName, tabs);
+            console.log('Saved image note for progress image', currentProgressImageIndex);
+        }
+    }, 1000);
+}
+
+// Load and display note for current overview image
+function loadOverviewImageNote() {
+    const noteInput = document.getElementById('pvImageNote');
+    const noteContainer = noteInput?.parentElement;
+    if (!noteInput) return;
+
+    if (!currentProject?.images?.length) {
+        if (noteContainer) noteContainer.style.display = 'none';
+        return;
+    }
+
+    if (noteContainer) noteContainer.style.display = 'block';
+
+    const imgData = getImageData(currentProject.images, currentImageIndex);
+    noteInput.value = imgData.note || '';
+}
+
+// Load and display note for current progress image
+function loadProgressImageNote() {
+    const noteInput = document.getElementById('progressImageNote');
+    const noteContainer = noteInput?.parentElement;
+    if (!noteInput) return;
+
+    const tabs = getProjectProgressTabs();
+    const tab = tabs[currentTabIndex - 1];
+
+    if (!tab?.images?.length) {
+        if (noteContainer) noteContainer.style.display = 'none';
+        return;
+    }
+
+    if (noteContainer) noteContainer.style.display = 'block';
+
+    const imgData = getImageData(tab.images, currentProgressImageIndex);
+    noteInput.value = imgData.note || '';
 }

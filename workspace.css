@@ -338,6 +338,65 @@
 .pv-prev { left: 0.75rem; }
 .pv-next { right: 0.75rem; }
 
+/* Delete Image Button */
+.pv-gallery-delete {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 32px;
+    height: 32px;
+    background: rgba(239, 68, 68, 0.9);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: var(--transition);
+    opacity: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+}
+
+.pv-gallery-main:hover .pv-gallery-delete {
+    opacity: 1;
+}
+
+.pv-gallery-delete:hover {
+    background: #dc2626;
+    transform: scale(1.1);
+}
+
+/* Image Note Input */
+.pv-image-note {
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid var(--glass-border);
+}
+
+.pv-image-note input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    font-family: inherit;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    transition: border-color 0.2s ease;
+}
+
+.pv-image-note input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.pv-image-note input::placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 .pv-no-images {
     color: var(--text-muted);
     font-size: 0.9rem;

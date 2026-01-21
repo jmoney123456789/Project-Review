@@ -138,11 +138,15 @@
                             <img id="pvMainImage" src="" alt="Project screenshot" style="display: none;">
                             <button class="pv-gallery-nav pv-prev" id="pvPrevBtn" hidden>&lt;</button>
                             <button class="pv-gallery-nav pv-next" id="pvNextBtn" hidden>&gt;</button>
+                            <button class="pv-gallery-delete" id="pvDeleteBtn" hidden title="Delete this screenshot">&times;</button>
                             <div class="pv-no-images" id="pvNoImages" style="display: block;">
                                 <span>No screenshots</span>
                             </div>
                         </div>
                         <div class="pv-thumbnails" id="pvThumbnails"></div>
+                        <div class="pv-image-note">
+                            <input type="text" id="pvImageNote" placeholder="Add a note for this image..." maxlength="200">
+                        </div>
                         <div class="pv-gallery-upload">
                             <input type="file" id="galleryFileInput" multiple accept="image/*" hidden>
                             <button class="btn-add-images" id="addImagesBtn" title="Add screenshots">
@@ -232,11 +236,15 @@
                             <img id="progressMainImage" src="" alt="Progress screenshot" style="display: none;">
                             <button class="pv-gallery-nav pv-prev" id="progressPrevBtn" hidden>&lt;</button>
                             <button class="pv-gallery-nav pv-next" id="progressNextBtn" hidden>&gt;</button>
+                            <button class="pv-gallery-delete" id="progressDeleteBtn" hidden title="Delete this screenshot">&times;</button>
                             <div class="pv-no-images" id="progressNoImages" style="display: block;">
                                 <span>No screenshots in this tab</span>
                             </div>
                         </div>
                         <div class="pv-thumbnails" id="progressThumbnails"></div>
+                        <div class="pv-image-note">
+                            <input type="text" id="progressImageNote" placeholder="Add a note for this image..." maxlength="200">
+                        </div>
                         <div class="pv-gallery-upload">
                             <input type="file" id="progressFileInput" multiple accept="image/*" hidden>
                             <button class="btn-add-images" id="addProgressImagesBtn" title="Add screenshots">
@@ -436,6 +444,25 @@
                 <div class="modal-actions">
                     <button class="btn-cancel" id="deleteFileCancelBtn">Cancel</button>
                     <button class="btn-delete" id="deleteFileConfirmBtn">Delete File</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Image Confirmation Modal -->
+    <div class="modal" id="deleteImageModal" hidden>
+        <div class="modal-backdrop" id="deleteImageModalBackdrop"></div>
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Delete Screenshot</h2>
+                <button class="modal-close" id="deleteImageModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="delete-warning">Are you sure you want to delete this screenshot?</p>
+                <p class="delete-subtext">This action cannot be undone.</p>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="deleteImageCancelBtn">Cancel</button>
+                    <button class="btn-delete" id="deleteImageConfirmBtn">Delete Screenshot</button>
                 </div>
             </div>
         </div>
