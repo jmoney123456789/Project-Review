@@ -1670,6 +1670,8 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius);
+    overflow: visible;
+    position: relative;
 }
 
 .progress-tabs-scroll {
@@ -2025,6 +2027,7 @@
 .files-dropdown-container {
     position: relative;
     margin-left: 0.5rem;
+    flex-shrink: 0;
 }
 
 .files-btn {
@@ -2068,8 +2071,9 @@
 .files-dropdown {
     position: absolute;
     top: calc(100% + 0.5rem);
-    left: 0;
+    right: 0;
     min-width: 280px;
+    max-width: calc(100vw - 2rem);
     background: var(--black-light);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius);
