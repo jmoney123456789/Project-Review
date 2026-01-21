@@ -101,50 +101,76 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ==========================================
 // Mobile Navigation
 // ==========================================
+let currentMobileTab = 'projects';
+
 function setupMobileNav() {
-    // Set initial state on mobile
-    if (window.innerWidth <= 900) {
-        switchMobileTab('projects'); // Start with projects list on mobile
+    // Check if we're on mobile
+    const isMobile = window.innerWidth <= 900;
+
+    if (isMobile) {
+        // Set initial state - show projects list first
+        switchMobileTab('projects');
+        console.log('Mobile nav initialized - showing projects tab');
     }
 
-    // Handle resize
+    // Handle resize between mobile and desktop
+    let wasIsMobile = isMobile;
     window.addEventListener('resize', () => {
-        if (window.innerWidth > 900) {
-            // Reset to desktop view
+        const nowMobile = window.innerWidth <= 900;
+
+        if (nowMobile && !wasIsMobile) {
+            // Switched TO mobile - activate current tab
+            switchMobileTab(currentMobileTab);
+        } else if (!nowMobile && wasIsMobile) {
+            // Switched TO desktop - remove all mobile classes
             document.querySelector('.sidebar-left')?.classList.remove('mobile-active');
             document.querySelector('.sidebar-right')?.classList.remove('mobile-active');
             document.querySelector('.main-content')?.classList.remove('mobile-active');
         }
+
+        wasIsMobile = nowMobile;
     });
 }
 
 function switchMobileTab(tab) {
+    currentMobileTab = tab;
+
     const sidebarLeft = document.querySelector('.sidebar-left');
     const sidebarRight = document.querySelector('.sidebar-right');
     const mainContent = document.querySelector('.main-content');
     const tabs = document.querySelectorAll('.mobile-tab');
 
+    if (!sidebarLeft || !sidebarRight || !mainContent) {
+        console.error('Mobile nav: Could not find required elements');
+        return;
+    }
+
     // Remove all active states
-    sidebarLeft?.classList.remove('mobile-active');
-    sidebarRight?.classList.remove('mobile-active');
-    mainContent?.classList.remove('mobile-active');
+    sidebarLeft.classList.remove('mobile-active');
+    sidebarRight.classList.remove('mobile-active');
+    mainContent.classList.remove('mobile-active');
     tabs.forEach(t => t.classList.remove('active'));
 
     // Activate selected tab
     const activeTab = document.querySelector(`.mobile-tab[data-tab="${tab}"]`);
-    activeTab?.classList.add('active');
+    if (activeTab) {
+        activeTab.classList.add('active');
+    }
 
+    // Show the selected panel
     switch (tab) {
         case 'projects':
-            sidebarLeft?.classList.add('mobile-active');
+            sidebarLeft.classList.add('mobile-active');
             break;
         case 'main':
-            mainContent?.classList.add('mobile-active');
+            mainContent.classList.add('mobile-active');
             break;
         case 'tasks':
-            sidebarRight?.classList.add('mobile-active');
+            sidebarRight.classList.add('mobile-active');
             break;
     }
+
+    console.log('Switched to mobile tab:', tab);
 }
 
 // Make function globally available

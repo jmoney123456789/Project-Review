@@ -1113,39 +1113,58 @@
 }
 
 @media (max-width: 900px) {
+    /* Mobile workspace layout */
+    .workspace-body {
+        height: 100vh;
+        height: 100dvh; /* Dynamic viewport height for mobile browsers */
+    }
+
     .workspace-container {
-        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 52px - 60px);
+        height: calc(100dvh - 52px - 60px);
+        overflow: hidden;
+    }
+
+    /* All panels are full-screen overlays on mobile */
+    .sidebar-left,
+    .sidebar-right,
+    .main-content {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+
+    .sidebar-left {
+        border-right: none;
+    }
+
+    .sidebar-right {
+        border-left: none;
+    }
+
+    /* Active panel is visible */
+    .sidebar-left.mobile-active,
+    .sidebar-right.mobile-active,
+    .main-content.mobile-active {
+        opacity: 1;
+        pointer-events: auto;
+        z-index: 20;
+    }
+
+    /* Make workspace container relative for absolute positioning */
+    .workspace-container {
         position: relative;
     }
 
-    /* Hide sidebars by default on mobile - shown via tab navigation */
-    .sidebar-left,
-    .sidebar-right {
-        display: none;
-        position: fixed;
-        top: 60px;
-        left: 0;
-        right: 0;
-        bottom: 60px;
-        z-index: 100;
-        border: none;
-    }
-
-    .sidebar-left.mobile-active,
-    .sidebar-right.mobile-active {
-        display: flex;
-    }
-
-    .main-content {
-        display: none;
-        padding-bottom: 70px;
-    }
-
-    .main-content.mobile-active {
-        display: block;
-    }
-
-    /* Mobile Tab Navigation */
+    /* Mobile Tab Navigation - ALWAYS visible on mobile */
     .mobile-tab-nav {
         display: flex !important;
         position: fixed;
@@ -1155,7 +1174,7 @@
         height: 60px;
         background: var(--bg-secondary);
         border-top: 1px solid var(--border);
-        z-index: 200;
+        z-index: 1000;
     }
 
     .mobile-tab {
@@ -1170,21 +1189,19 @@
         color: var(--text-muted);
         font-size: 0.7rem;
         cursor: pointer;
-        transition: var(--transition);
+        transition: color 0.2s ease;
+        -webkit-tap-highlight-color: transparent;
     }
 
     .mobile-tab-icon {
-        font-size: 1.25rem;
+        font-size: 1.5rem;
     }
 
     .mobile-tab.active {
         color: var(--accent);
     }
 
-    .mobile-tab:hover {
-        color: var(--text-primary);
-    }
-
+    /* Content adjustments for mobile */
     .project-media-row {
         grid-template-columns: 1fr;
     }
@@ -1206,7 +1223,7 @@
         flex-direction: column;
     }
 
-    /* Adjust header for mobile */
+    /* Hide desktop header nav on mobile */
     .workspace-header .header-nav {
         display: none;
     }
@@ -1230,11 +1247,24 @@
         align-items: flex-start;
         gap: 0.5rem;
     }
+
+    /* Ensure content is scrollable */
+    .main-content {
+        overflow-y: auto;
+        padding-bottom: 1rem;
+    }
+
+    .sidebar-left,
+    .sidebar-right {
+        overflow-y: auto;
+    }
 }
 
-/* Hide mobile nav on desktop */
-.mobile-tab-nav {
-    display: none;
+/* Desktop: hide mobile nav */
+@media (min-width: 901px) {
+    .mobile-tab-nav {
+        display: none !important;
+    }
 }
 
 /* ==========================================
