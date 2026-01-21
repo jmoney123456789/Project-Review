@@ -2,16 +2,18 @@
 // PROJECT REVIEW - Dashboard Script
 // ==========================================
 
-// JSONBin.io Configuration - uses variables from app.js (loaded first)
-// JSONBIN_BIN_ID and JSONBIN_API_KEY are defined in app.js
+// Firebase Configuration - uses variables from app.js (loaded first)
+// firebase and database are initialized in app.js
 
 let allProjects = [];
 let allFeedback = [];
 let allTasks = {};
 let completedProjects = {};
 
-// Cache settings - short duration to ensure fresh data
-const CACHE_DURATION = 0; // Always sync on page load for fresh data
+// Firebase real-time listeners
+let projectsListener = null;
+let feedbackListener = null;
+let dataLoaded = false;
 
 // ==========================================
 // Load Dashboard Data
@@ -20,39 +22,33 @@ async function loadDashboardData() {
     allTasks = JSON.parse(localStorage.getItem('projectTasks') || '{}');
     completedProjects = JSON.parse(localStorage.getItem('completedProjects') || '{}');
 
-    // CLOUD IS SOURCE OF TRUTH - fetch from cloud FIRST
-    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        console.log('Dashboard: Fetching from cloud (source of truth)...');
-        try {
-            await fetchFromCloudAsSourceOfTruth();
-            console.log('Dashboard: Cloud data loaded. Projects:', allProjects.length);
-        } catch (err) {
-            console.error('Dashboard: Cloud fetch failed, falling back to local:', err);
-            loadFromLocalStorage();
-        }
-    } else {
+    // FIREBASE IS SOURCE OF TRUTH - fetch from Firebase FIRST
+    console.log('Dashboard: Fetching from Firebase (source of truth)...');
+    try {
+        await fetchFromFirebaseAsSourceOfTruth();
+        console.log('Dashboard: Firebase data loaded. Projects:', allProjects.length);
+    } catch (err) {
+        console.error('Dashboard: Firebase fetch failed, falling back to local:', err);
         loadFromLocalStorage();
     }
 
     renderDashboard();
+    dataLoaded = true;
+    setupFirebaseListeners(); // Real-time sync!
 }
 
-// Fetch from cloud as the single source of truth
-async function fetchFromCloudAsSourceOfTruth() {
-    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-        headers: { 'X-Access-Key': JSONBIN_API_KEY }
-    });
+// Fetch from Firebase as the single source of truth
+async function fetchFromFirebaseAsSourceOfTruth() {
+    const snapshot = await database.ref('/').once('value');
+    const data = snapshot.val() || { projects: {}, feedback: {} };
 
-    if (!response.ok) {
-        throw new Error(`Cloud fetch failed: ${response.status}`);
-    }
+    // Convert Firebase objects to arrays
+    const projectsObj = data.projects || {};
+    const feedbackObj = data.feedback || {};
 
-    const data = await response.json();
-    const cloudData = data.record || { projects: [], feedback: [] };
-
-    // Cloud data completely replaces local data
-    allProjects = (cloudData.projects || []).filter(p => !p._deletedAt);
-    allFeedback = (cloudData.feedback || []).filter(f => !f._deletedAt);
+    // Firebase data completely replaces local data
+    allProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
+    allFeedback = Object.values(feedbackObj).filter(f => !f._deletedAt);
 
     // Cache and restore images
     const imageCache = JSON.parse(localStorage.getItem('projectImageCache') || '{}');
@@ -76,6 +72,56 @@ async function fetchFromCloudAsSourceOfTruth() {
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
 }
 
+// Setup Firebase real-time listeners
+function setupFirebaseListeners() {
+    console.log('Dashboard: Setting up Firebase real-time listeners...');
+
+    // Listen for project changes
+    projectsListener = database.ref('projects').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const projectsObj = snapshot.val() || {};
+        allProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
+
+        // Restore cached images
+        const imageCache = JSON.parse(localStorage.getItem('projectImageCache') || '{}');
+        allProjects = allProjects.map(p => {
+            if (!p.images || p.images.length === 0) {
+                const cached = imageCache[p.projectName];
+                if (cached) return { ...p, images: cached };
+            } else {
+                imageCache[p.projectName] = p.images;
+            }
+            return p;
+        });
+        localStorage.setItem('projectImageCache', JSON.stringify(imageCache));
+
+        // Update localStorage
+        const combined = [...allProjects, ...allFeedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+        console.log('Dashboard: Real-time update - Projects changed, now have', allProjects.length);
+        renderDashboard();
+    });
+
+    // Listen for feedback changes
+    feedbackListener = database.ref('feedback').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const feedbackObj = snapshot.val() || {};
+        allFeedback = Object.values(feedbackObj).filter(f => !f._deletedAt);
+
+        // Update localStorage
+        const combined = [...allProjects, ...allFeedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+        console.log('Dashboard: Real-time update - Feedback changed, now have', allFeedback.length);
+        renderDashboard();
+    });
+
+    console.log('Dashboard: Firebase real-time listeners active!');
+}
+
 function loadFromLocalStorage() {
     const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
     // Filter out soft-deleted items (legacy cleanup) and only get active items
@@ -94,68 +140,10 @@ function loadFromLocalStorage() {
 }
 
 // ==========================================
-// Cloud Sync (JSONBin.io)
+// Firebase Sync (handled by real-time listeners)
 // ==========================================
-async function syncFromCloud() {
-    if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) {
-        console.log('Dashboard: JSONBin not configured');
-        return;
-    }
-
-    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-        headers: { 'X-Access-Key': JSONBIN_API_KEY }
-    });
-
-    if (response.ok) {
-        const data = await response.json();
-        console.log('Dashboard: Cloud data received:', data);
-        const cloudData = data.record || { projects: [], feedback: [] };
-
-        console.log('Dashboard: Cloud has', (cloudData.projects || []).length, 'projects');
-
-        // Merge cloud data with local
-        mergeCloudData(cloudData);
-
-        console.log('Dashboard: After merge, allProjects has', allProjects.length, 'projects');
-    } else {
-        console.error('Dashboard: Cloud fetch failed with status:', response.status);
-    }
-}
-
-function mergeCloudData(cloudData) {
-    // Cloud is the source of truth - replace local data with cloud data
-    // This ensures deletions sync properly across devices
-    const cloudProjects = cloudData.projects || [];
-    const cloudFeedback = cloudData.feedback || [];
-
-    // Filter out soft-deleted items (hard deletes won't be in cloud at all)
-    allProjects = cloudProjects.filter(p => !p._deletedAt);
-    allFeedback = cloudFeedback.filter(f => !f._deletedAt);
-
-    // Cache any new images from cloud
-    const imageCache = JSON.parse(localStorage.getItem('projectImageCache') || '{}');
-    allProjects.forEach(p => {
-        if (p.images && p.images.length > 0 && !imageCache[p.projectName]) {
-            imageCache[p.projectName] = p.images;
-        }
-    });
-    localStorage.setItem('projectImageCache', JSON.stringify(imageCache));
-
-    // Restore images from cache for all projects
-    allProjects = allProjects.map(p => {
-        const cachedImages = imageCache[p.projectName];
-        if (cachedImages && cachedImages.length > 0) {
-            return { ...p, images: cachedImages };
-        }
-        return p;
-    });
-
-    // Save to localStorage (only active items)
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
-
-    console.log('Dashboard merged from cloud:', allProjects.length, 'projects,', allFeedback.length, 'feedback');
-}
+// Note: With Firebase real-time listeners, syncFromCloud is rarely needed
+// The dashboard automatically updates when data changes in Firebase
 
 // ==========================================
 // Render Dashboard

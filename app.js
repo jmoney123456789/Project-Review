@@ -3,23 +3,32 @@
 // ==========================================
 
 // ==========================================
-// JSONBin.io Configuration (free JSON storage API)
+// Firebase Configuration
 // ==========================================
-// HOW TO SET UP (if you get 403 errors):
-// 1. Go to https://jsonbin.io and create a free account
-// 2. Create a new bin (click "Create" button)
-// 3. Copy the Bin ID from the URL (the long string after /b/)
-// 4. Go to API Keys section and create/copy your Access Key
-// 5. Replace the values below with your new credentials
-//
-// COST OPTIMIZATION:
-// - Free tier: 10,000 lifetime requests
-// - This app only syncs on explicit user actions (submit, refresh)
-// - Images are NOT synced to cloud (localStorage only) to save bandwidth
-// - With 2 users, this should last for years of normal use
+// Firebase Realtime Database - replaces JSONBin for reliable cross-device sync
+// Benefits:
+// - Real-time sync (no refresh needed)
+// - Works great on mobile
+// - Generous free tier (1GB storage, 10GB bandwidth/month)
+// - No server needed - works from GitHub Pages
 // ==========================================
-const JSONBIN_BIN_ID = '6970043cd0ea881f40793eef';
-const JSONBIN_API_KEY = '$2a$10$bsKy2cxdAUQiImhqe5jl7.5b.xf/xuAl/lOqitoA90qU7pjt7jlWS';
+const firebaseConfig = {
+    apiKey: "AIzaSyAI2H8QewQ_M7vmA-FtfXJq4N_brRydec8",
+    authDomain: "project-review-fe0cc.firebaseapp.com",
+    databaseURL: "https://project-review-fe0cc-default-rtdb.firebaseio.com",
+    projectId: "project-review-fe0cc",
+    storageBucket: "project-review-fe0cc.firebasestorage.app",
+    messagingSenderId: "496818003443",
+    appId: "1:496818003443:web:8fde3dd33c3082dad70686"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// Legacy JSONBin variables (kept for reference during migration, will be removed)
+const JSONBIN_BIN_ID = null;
+const JSONBIN_API_KEY = null;
 
 // ==========================================
 // Character Counter
@@ -381,10 +390,15 @@ function setupFeedbackForm() {
 }
 
 // ==========================================
-// Data Storage (Local + Cloud Sync)
+// Data Storage (Local + Firebase Sync)
 // ==========================================
 async function submitToStorage(data) {
     console.log('submitToStorage called with:', data);
+
+    // Generate a unique ID for the item if it doesn't have one
+    if (!data.id) {
+        data.id = generateId();
+    }
 
     // Always save locally first
     const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
@@ -394,55 +408,77 @@ async function submitToStorage(data) {
     localStorage.setItem('projectReviewData', JSON.stringify(stored));
 
     console.log('Data saved! Total items now:', stored.length);
-    console.log('Verification - reading back:', JSON.parse(localStorage.getItem('projectReviewData')).length, 'items');
 
-    // If JSONBin is configured, sync to cloud
-    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        await syncToCloud();
+    // Sync to Firebase
+    await syncToFirebase(data);
+}
+
+// Generate a unique ID
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
+// Sync a single item to Firebase
+async function syncToFirebase(data) {
+    try {
+        const itemType = data.type === 'project' ? 'projects' : 'feedback';
+        const itemId = data.id || generateId();
+
+        // Use projectName as key for projects (allows easy lookup/update)
+        const key = data.type === 'project'
+            ? sanitizeFirebaseKey(data.projectName)
+            : itemId;
+
+        await database.ref(`${itemType}/${key}`).set({
+            ...data,
+            id: itemId,
+            _lastModified: new Date().toISOString()
+        });
+
+        console.log(`Synced ${data.type} to Firebase:`, key);
+    } catch (error) {
+        console.error('Firebase sync error:', error);
     }
 }
 
-async function syncToCloud() {
-    if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) {
-        console.log('JSONBin not configured - BIN_ID:', JSONBIN_BIN_ID, 'API_KEY exists:', !!JSONBIN_API_KEY);
-        return;
-    }
-
+// Sync all data to Firebase (full sync)
+async function syncAllToFirebase() {
     const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
-    const projects = stored.filter(item => item.type === 'project');
-    const feedback = stored.filter(item => item.type === 'feedback');
+    const projects = stored.filter(item => item.type === 'project' && !item._deletedAt);
+    const feedback = stored.filter(item => item.type === 'feedback' && !item._deletedAt);
 
-    // Sync images to cloud - but they'll be cached locally after first download
-    // This enables cross-device image sync while minimizing bandwidth
-    const cloudData = {
-        projects,
-        feedback,
-        lastUpdated: new Date().toISOString()
-    };
-
-    console.log('Syncing to cloud. Projects:', projects.length, 'Feedback:', feedback.length);
+    console.log('Full sync to Firebase. Projects:', projects.length, 'Feedback:', feedback.length);
 
     try {
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Access-Key': JSONBIN_API_KEY
-            },
-            body: JSON.stringify(cloudData)
+        // Prepare data for Firebase
+        const projectsObj = {};
+        projects.forEach(p => {
+            const key = sanitizeFirebaseKey(p.projectName);
+            projectsObj[key] = { ...p, id: p.id || generateId() };
         });
 
-        if (response.ok) {
-            console.log('Synced to cloud successfully!');
-        } else {
-            const errorText = await response.text();
-            console.error('Cloud sync failed with status:', response.status, errorText);
-            // Log to console only - don't interrupt user with alerts
-        }
+        const feedbackObj = {};
+        feedback.forEach(f => {
+            const key = f.id || generateId();
+            feedbackObj[key] = { ...f, id: key };
+        });
+
+        // Write to Firebase
+        await database.ref('/').set({
+            projects: projectsObj,
+            feedback: feedbackObj,
+            lastUpdated: new Date().toISOString()
+        });
+
+        console.log('Full sync to Firebase completed!');
     } catch (error) {
-        console.error('Cloud sync error:', error);
-        // Log to console only - don't interrupt user with alerts
+        console.error('Firebase full sync error:', error);
     }
+}
+
+// Sanitize keys for Firebase (no ., #, $, [, ])
+function sanitizeFirebaseKey(key) {
+    return key.replace(/[.#$\[\]]/g, '_');
 }
 
 async function fetchProjects() {
@@ -452,43 +488,41 @@ async function fetchProjects() {
 }
 
 // ==========================================
-// Sync from Cloud on Load
+// Sync from Firebase on Load
 // ==========================================
-async function syncFromCloud() {
-    if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) {
-        console.log('JSONBin not configured for fetch');
-        return;
-    }
-
-    console.log('Fetching from cloud...');
+async function syncFromFirebase() {
+    console.log('Fetching from Firebase...');
 
     try {
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-            headers: { 'X-Access-Key': JSONBIN_API_KEY }
-        });
+        const snapshot = await database.ref('/').once('value');
+        const data = snapshot.val() || { projects: {}, feedback: {} };
 
-        if (response.ok) {
-            const data = await response.json();
-            console.log('Cloud data received:', data);
-            const cloudData = data.record || { projects: [], feedback: [] };
+        // Convert objects to arrays
+        const projects = data.projects ? Object.values(data.projects).filter(p => !p._deletedAt) : [];
+        const feedback = data.feedback ? Object.values(data.feedback).filter(f => !f._deletedAt) : [];
 
-            // Cloud is the source of truth - replace local data
-            const cloudProjects = cloudData.projects || [];
-            const cloudFeedback = cloudData.feedback || [];
+        console.log('Firebase has', projects.length, 'projects,', feedback.length, 'feedback');
 
-            console.log('Cloud has', cloudProjects.length, 'projects,', cloudFeedback.length, 'feedback');
+        // Replace local data with Firebase data
+        const combined = [...projects, ...feedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+        console.log('Synced from Firebase, total items:', combined.length);
 
-            // Replace local data with cloud data
-            const combined = [...cloudProjects, ...cloudFeedback];
-            localStorage.setItem('projectReviewData', JSON.stringify(combined));
-            console.log('Synced from cloud, total items:', combined.length);
-        } else {
-            const errorText = await response.text();
-            console.error('Cloud fetch failed with status:', response.status, errorText);
-        }
+        return { projects, feedback };
     } catch (error) {
-        console.error('Cloud fetch error:', error);
+        console.error('Firebase fetch error:', error);
+        return null;
     }
+}
+
+// Legacy function - now uses Firebase
+async function syncFromCloud() {
+    return syncFromFirebase();
+}
+
+// Legacy function - now uses Firebase
+async function syncToCloud() {
+    return syncAllToFirebase();
 }
 
 // ==========================================
@@ -535,25 +569,13 @@ function cleanupDuplicates() {
 // Initialize
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
-    // CLOUD IS SOURCE OF TRUTH - fetch latest on page load
-    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        console.log('Fetching latest data from cloud...');
-        try {
-            const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-                headers: { 'X-Access-Key': JSONBIN_API_KEY }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                const cloudData = data.record || { projects: [], feedback: [] };
-                // Replace local data with cloud data
-                const projects = (cloudData.projects || []).filter(p => !p._deletedAt);
-                const feedback = (cloudData.feedback || []).filter(f => !f._deletedAt);
-                localStorage.setItem('projectReviewData', JSON.stringify([...projects, ...feedback]));
-                console.log('Synced from cloud:', projects.length, 'projects');
-            }
-        } catch (err) {
-            console.log('Cloud sync failed:', err);
-        }
+    // FIREBASE IS SOURCE OF TRUTH - fetch latest on page load
+    console.log('Fetching latest data from Firebase...');
+    try {
+        await syncFromFirebase();
+        console.log('Synced from Firebase successfully');
+    } catch (err) {
+        console.log('Firebase sync failed:', err);
     }
 
     cleanupDuplicates();
@@ -561,7 +583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupFeedbackForm();
 });
 
-// Helper: Clear all local data and resync from cloud (for debugging sync issues)
+// Helper: Clear all local data and resync from Firebase (for debugging sync issues)
 window.resetAndResync = async function() {
     console.log('Clearing all local data...');
     localStorage.removeItem('projectReviewData');
@@ -569,4 +591,60 @@ window.resetAndResync = async function() {
     localStorage.removeItem('projectCacheTimestamp');
     console.log('Local data cleared. Refreshing page...');
     location.reload();
+};
+
+// Helper: Migrate existing JSONBin data to Firebase
+// Call this ONCE from browser console: migrateToFirebase()
+window.migrateToFirebase = async function() {
+    console.log('Starting migration to Firebase...');
+
+    // Get existing data from localStorage
+    const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
+    const projects = stored.filter(item => item.type === 'project' && !item._deletedAt);
+    const feedback = stored.filter(item => item.type === 'feedback' && !item._deletedAt);
+
+    console.log('Found', projects.length, 'projects and', feedback.length, 'feedback items to migrate');
+
+    if (projects.length === 0 && feedback.length === 0) {
+        console.log('No data to migrate!');
+        return;
+    }
+
+    try {
+        // Prepare data for Firebase
+        const projectsObj = {};
+        projects.forEach(p => {
+            const key = sanitizeFirebaseKey(p.projectName);
+            projectsObj[key] = {
+                ...p,
+                id: p.id || generateId(),
+                _lastModified: p._lastModified || p.timestamp || new Date().toISOString()
+            };
+        });
+
+        const feedbackObj = {};
+        feedback.forEach(f => {
+            const key = f.id || generateId();
+            feedbackObj[key] = {
+                ...f,
+                id: key,
+                _lastModified: f._lastModified || f.timestamp || new Date().toISOString()
+            };
+        });
+
+        // Write to Firebase
+        await database.ref('/').set({
+            projects: projectsObj,
+            feedback: feedbackObj,
+            lastUpdated: new Date().toISOString()
+        });
+
+        console.log('Migration complete!');
+        console.log('Migrated', Object.keys(projectsObj).length, 'projects');
+        console.log('Migrated', Object.keys(feedbackObj).length, 'feedback items');
+        console.log('Refresh the page to verify.');
+
+    } catch (error) {
+        console.error('Migration failed:', error);
+    }
 };

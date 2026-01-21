@@ -2,8 +2,8 @@
 // PROJECT REVIEW - Workspace Script
 // ==========================================
 
-// JSONBin.io Configuration - uses variables from app.js (loaded first)
-// JSONBIN_BIN_ID and JSONBIN_API_KEY are defined in app.js
+// Firebase Configuration - uses variables from app.js (loaded first)
+// firebase and database are initialized in app.js
 
 // Helper: Clear all local data and resync from cloud (for debugging sync issues)
 // Call from browser console: resetAndResync()
@@ -37,13 +37,9 @@ let dataLoaded = false;
 let statusFilter = 'all'; // 'all', 'in_progress', 'completed', 'archived'
 let tagFilters = []; // Array of selected tags
 
-// Cache settings - OPTIMIZED: Long cache, manual refresh only
-// This saves API requests - JSONBin free tier has limited lifetime requests
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour (sync only on user action)
-let lastCloudFetch = 0;
-
-// Sync lock to prevent concurrent syncs
-let syncInProgress = false;
+// Firebase real-time listeners
+let projectsListener = null;
+let feedbackListener = null;
 
 // ==========================================
 // Image Cache System
@@ -98,8 +94,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadAllData();
     setupEventListeners();
     setupDeleteModal();
-    // NO automatic polling - saves API requests
-    // Users click Refresh button when they want latest data
+    setupFirebaseListeners(); // Real-time sync - no refresh needed!
 });
 
 async function loadAllData() {
@@ -108,19 +103,14 @@ async function loadAllData() {
     allNotes = JSON.parse(localStorage.getItem('projectNotes') || '{}');
     loadChangesLog();
 
-    // CLOUD IS SOURCE OF TRUTH - fetch from cloud FIRST
-    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        console.log('Fetching data from cloud (source of truth)...');
-        try {
-            await fetchFromCloudAsSourceOfTruth();
-            console.log('Cloud data loaded. Projects:', allProjects.filter(p => !p._deletedAt).length);
-        } catch (err) {
-            console.error('Cloud fetch failed, falling back to local:', err);
-            // Only use local data if cloud fails
-            loadFromLocalStorage();
-        }
-    } else {
-        // No cloud configured, use local
+    // FIREBASE IS SOURCE OF TRUTH - fetch from Firebase FIRST
+    console.log('Fetching data from Firebase (source of truth)...');
+    try {
+        await fetchFromFirebaseAsSourceOfTruth();
+        console.log('Firebase data loaded. Projects:', allProjects.filter(p => !p._deletedAt).length);
+    } catch (err) {
+        console.error('Firebase fetch failed, falling back to local:', err);
+        // Only use local data if Firebase fails
         loadFromLocalStorage();
     }
 
@@ -131,24 +121,20 @@ async function loadAllData() {
     dataLoaded = true;
 }
 
-// Fetch from cloud as the single source of truth
-async function fetchFromCloudAsSourceOfTruth() {
-    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-        headers: { 'X-Access-Key': JSONBIN_API_KEY }
-    });
+// Fetch from Firebase as the single source of truth
+async function fetchFromFirebaseAsSourceOfTruth() {
+    const snapshot = await database.ref('/').once('value');
+    const data = snapshot.val() || { projects: {}, feedback: {} };
 
-    if (!response.ok) {
-        throw new Error(`Cloud fetch failed: ${response.status}`);
-    }
+    // Convert Firebase objects to arrays
+    const projectsObj = data.projects || {};
+    const feedbackObj = data.feedback || {};
 
-    const data = await response.json();
-    const cloudData = data.record || { projects: [], feedback: [] };
+    // Firebase data completely replaces local data for projects/feedback
+    allProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
+    allFeedback = Object.values(feedbackObj).filter(f => !f._deletedAt);
 
-    // Cloud data completely replaces local data for projects/feedback
-    allProjects = (cloudData.projects || []).filter(p => !p._deletedAt);
-    allFeedback = (cloudData.feedback || []).filter(f => !f._deletedAt);
-
-    // Cache images locally (but cloud data is truth)
+    // Cache images locally (but Firebase data is truth)
     allProjects.forEach(p => {
         if (p.images && p.images.length > 0) {
             cacheProjectImages(p.projectName, p.images);
@@ -164,11 +150,78 @@ async function fetchFromCloudAsSourceOfTruth() {
         return p;
     });
 
-    // Save cloud data to localStorage (as cache for offline)
+    // Save Firebase data to localStorage (as cache for offline)
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
 
-    console.log('Cloud data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback');
+    console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback');
+}
+
+// Setup Firebase real-time listeners
+function setupFirebaseListeners() {
+    console.log('Setting up Firebase real-time listeners...');
+
+    // Listen for project changes
+    projectsListener = database.ref('projects').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const projectsObj = snapshot.val() || {};
+        const newProjects = Object.values(projectsObj).filter(p => !p._deletedAt);
+
+        // Restore cached images
+        allProjects = newProjects.map(p => {
+            if (!p.images || p.images.length === 0) {
+                const cached = getCachedImages(p.projectName);
+                if (cached) return { ...p, images: cached };
+            } else {
+                // Cache new images
+                cacheProjectImages(p.projectName, p.images);
+            }
+            return p;
+        });
+
+        // Update localStorage
+        const combined = [...allProjects, ...allFeedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+        console.log('Real-time update: Projects changed, now have', allProjects.length);
+        renderProjectList();
+
+        // Update current project view if it changed
+        if (currentProject) {
+            const updated = allProjects.find(p => p.projectName === currentProject.projectName);
+            if (updated) {
+                currentProject = updated;
+                populateProjectView(updated);
+            } else {
+                // Project was deleted
+                currentProject = null;
+                document.getElementById('noProjectSelected').hidden = false;
+                document.getElementById('projectView').hidden = true;
+            }
+        }
+    });
+
+    // Listen for feedback changes
+    feedbackListener = database.ref('feedback').on('value', (snapshot) => {
+        if (!dataLoaded) return; // Skip initial load
+
+        const feedbackObj = snapshot.val() || {};
+        allFeedback = Object.values(feedbackObj).filter(f => !f._deletedAt);
+
+        // Update localStorage
+        const combined = [...allProjects, ...allFeedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+        console.log('Real-time update: Feedback changed, now have', allFeedback.length);
+
+        // Update feedback display if viewing a project
+        if (currentProject) {
+            renderExistingFeedback();
+        }
+    });
+
+    console.log('Firebase real-time listeners active!');
 }
 
 // Migration function for existing projects
@@ -248,79 +301,31 @@ function loadFromLocalStorage() {
 }
 
 // ==========================================
-// Cloud Sync (JSONBin.io)
+// Firebase Sync
 // ==========================================
 async function syncFromCloud() {
-    if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) {
-        console.log('JSONBin not configured');
-        return;
-    }
+    // Now uses Firebase real-time listeners, but this can be called manually
+    console.log('Workspace: Manual sync from Firebase...');
+    await fetchFromFirebaseAsSourceOfTruth();
+    renderProjectList();
 
-    console.log('Workspace: Fetching from JSONBin...');
-
-    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-        headers: { 'X-Access-Key': JSONBIN_API_KEY }
-    });
-
-    if (response.ok) {
-        const data = await response.json();
-        console.log('Workspace: Cloud data received:', data);
-        const cloudData = data.record || { projects: [], feedback: [] };
-
-        console.log('Workspace: Cloud has', (cloudData.projects || []).length, 'projects');
-
-        // Merge cloud data with local data (cloud takes precedence for newer items)
-        mergeCloudData(cloudData);
-
-        console.log('Workspace: After merge, allProjects has', allProjects.length, 'projects');
-
-        // If a project is selected, refresh its view
-        if (currentProject) {
-            const updatedProject = allProjects.find(p => p.projectName === currentProject.projectName);
-            if (updatedProject) {
-                selectProject(updatedProject);
-            }
+    // If a project is selected, refresh its view
+    if (currentProject) {
+        const updatedProject = allProjects.find(p => p.projectName === currentProject.projectName);
+        if (updatedProject) {
+            currentProject = updatedProject;
+            populateProjectView(updatedProject);
+            renderExistingFeedback();
         }
-    } else {
-        console.error('Workspace: Cloud fetch failed with status:', response.status);
     }
 }
 
 async function syncToCloud() {
-    if (!JSONBIN_BIN_ID || !JSONBIN_API_KEY) return;
-
-    // Prevent concurrent syncs
-    if (syncInProgress) {
-        console.log('Sync already in progress, skipping...');
-        return;
-    }
-
-    syncInProgress = true;
+    // With Firebase, we sync individual items, not the whole database
+    // This function is kept for compatibility but real sync happens via syncProjectToFirebase
+    console.log('Workspace: Full sync to Firebase...');
 
     try {
-        // Read-modify-write pattern: fetch latest first, merge, then push
-        console.log('Sync: Fetching latest from cloud before push...');
-        const fetchResponse = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-            headers: { 'X-Access-Key': JSONBIN_API_KEY }
-        });
-
-        if (fetchResponse.ok) {
-            const data = await fetchResponse.json();
-            const cloudData = data.record || { projects: [], feedback: [] };
-
-            // Merge with current local data
-            const cloudProjects = cloudData.projects || [];
-            const cloudFeedback = cloudData.feedback || [];
-
-            // Smart merge to combine local changes with cloud changes
-            const mergedProjects = smartMergeItems(allProjects, cloudProjects, 'projectName');
-            const mergedFeedback = smartMergeItems(allFeedback, cloudFeedback, 'timestamp');
-
-            // Update local state with merged data
-            allProjects = mergedProjects;
-            allFeedback = mergedFeedback;
-        }
-
         // Cache any local images before syncing
         allProjects.forEach(p => {
             if (p.images && p.images.length > 0 && !p._deletedAt) {
@@ -328,157 +333,114 @@ async function syncToCloud() {
             }
         });
 
-        // Push data WITH images to cloud (for cross-device sync)
-        const pushData = {
-            projects: allProjects,
-            feedback: allFeedback,
-            lastUpdated: new Date().toISOString()
-        };
-
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Access-Key': JSONBIN_API_KEY
-            },
-            body: JSON.stringify(pushData)
+        // Prepare data for Firebase
+        const projectsObj = {};
+        allProjects.forEach(p => {
+            const key = sanitizeFirebaseKey(p.projectName);
+            projectsObj[key] = { ...p, id: p.id || generateId() };
         });
 
-        if (response.ok) {
-            console.log('Synced to cloud successfully');
-            // Save merged data to localStorage
-            const combined = [...allProjects, ...allFeedback];
-            localStorage.setItem('projectReviewData', JSON.stringify(combined));
-            // Reset cache timestamp so other tabs get fresh data
-            localStorage.setItem('projectCacheTimestamp', '0');
-        } else {
-            const errorText = await response.text();
-            console.error('Cloud sync failed with status:', response.status, errorText);
-            // Don't show alert for background syncs - only log to console
-        }
+        const feedbackObj = {};
+        allFeedback.forEach(f => {
+            const key = f.id || generateId();
+            feedbackObj[key] = { ...f, id: key };
+        });
+
+        // Write to Firebase
+        await database.ref('/').set({
+            projects: projectsObj,
+            feedback: feedbackObj,
+            lastUpdated: new Date().toISOString()
+        });
+
+        // Save to localStorage
+        const combined = [...allProjects, ...allFeedback];
+        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+        console.log('Synced to Firebase successfully');
     } catch (error) {
-        console.error('Cloud sync error:', error);
-        // Don't show alert for background syncs - only log to console
-    } finally {
-        syncInProgress = false;
+        console.error('Firebase sync error:', error);
     }
 }
 
-function mergeCloudData(cloudData) {
-    // Smart merge: compare versions and timestamps, respect soft deletes
-    const cloudProjects = cloudData.projects || [];
-    const cloudFeedback = cloudData.feedback || [];
-
-    // Cache images from cloud data (download once, cache forever)
-    cloudProjects.forEach(p => {
-        if (p.images && p.images.length > 0 && !p._deletedAt) {
-            const cached = getCachedImages(p.projectName);
-            if (!cached) {
-                // New images from cloud - cache them locally
-                cacheProjectImages(p.projectName, p.images);
-                console.log(`Downloaded and cached images for "${p.projectName}"`);
-            }
-        }
-    });
-
-    // Merge projects - keep newer version, respect deletions
-    let mergedProjects = smartMergeItems(allProjects, cloudProjects, 'projectName');
-
-    // Restore images from cache for all projects
-    mergedProjects = mergedProjects.map(p => {
-        if (!p._deletedAt) {
-            const cachedImages = getCachedImages(p.projectName);
-            if (cachedImages && cachedImages.length > 0) {
-                // Use cached images instead of re-downloading
-                return { ...p, images: cachedImages };
-            }
-        }
-        return p;
-    });
-
-    // Merge feedback - keep newer version, respect deletions
-    const mergedFeedback = smartMergeItems(allFeedback, cloudFeedback, 'timestamp');
-
-    // Update state
-    allProjects = mergedProjects;
-    allFeedback = mergedFeedback;
-
-    // Save to localStorage (including soft-deleted items)
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
-
-    console.log('Smart merged from cloud:', allProjects.filter(p => !p._deletedAt).length, 'active projects,',
-                allFeedback.filter(f => !f._deletedAt).length, 'active feedback');
+// Sync a single project to Firebase
+async function syncProjectToFirebase(project) {
+    try {
+        const key = sanitizeFirebaseKey(project.projectName);
+        await database.ref(`projects/${key}`).set({
+            ...project,
+            id: project.id || generateId(),
+            _lastModified: new Date().toISOString()
+        });
+        console.log('Synced project to Firebase:', project.projectName);
+    } catch (error) {
+        console.error('Firebase project sync error:', error);
+    }
 }
 
-// Smart merge function that handles version conflicts
-function smartMergeItems(localItems, cloudItems, keyField) {
-    const merged = new Map();
+// Sync a single feedback to Firebase
+async function syncFeedbackToFirebase(feedback) {
+    try {
+        const key = feedback.id || generateId();
+        await database.ref(`feedback/${key}`).set({
+            ...feedback,
+            id: key,
+            _lastModified: new Date().toISOString()
+        });
+        console.log('Synced feedback to Firebase');
+    } catch (error) {
+        console.error('Firebase feedback sync error:', error);
+    }
+}
 
-    // Add all cloud items first
-    cloudItems.forEach(item => {
-        const key = item[keyField];
-        merged.set(key, item);
-    });
+// Delete a project from Firebase
+async function deleteProjectFromFirebase(projectName) {
+    try {
+        const key = sanitizeFirebaseKey(projectName);
+        await database.ref(`projects/${key}`).remove();
+        console.log('Deleted project from Firebase:', projectName);
+    } catch (error) {
+        console.error('Firebase delete error:', error);
+    }
+}
 
-    // Merge local items, keeping newer versions
-    localItems.forEach(localItem => {
-        const key = localItem[keyField];
-        const cloudItem = merged.get(key);
+// Delete feedback for a project from Firebase
+async function deleteFeedbackFromFirebase(projectName) {
+    try {
+        // Get all feedback and remove matching ones
+        const snapshot = await database.ref('feedback').once('value');
+        const feedbackObj = snapshot.val() || {};
 
-        if (!cloudItem) {
-            // Local item doesn't exist in cloud - add it (new item)
-            merged.set(key, ensureVersionFields(localItem));
-        } else {
-            // Both exist - compare versions and timestamps
-            const localVersion = localItem._version || 0;
-            const cloudVersion = cloudItem._version || 0;
-            const localModified = new Date(localItem._lastModified || localItem.timestamp || 0).getTime();
-            const cloudModified = new Date(cloudItem._lastModified || cloudItem.timestamp || 0).getTime();
-
-            // If cloud item is deleted and is newer, keep it deleted
-            if (cloudItem._deletedAt) {
-                const cloudDeletedTime = new Date(cloudItem._deletedAt).getTime();
-                if (cloudDeletedTime > localModified) {
-                    // Cloud deletion is newer - keep cloud (deleted)
-                    merged.set(key, cloudItem);
-                } else {
-                    // Local modification is newer - keep local (restored)
-                    merged.set(key, ensureVersionFields(localItem));
-                }
-            } else if (localItem._deletedAt) {
-                const localDeletedTime = new Date(localItem._deletedAt).getTime();
-                if (localDeletedTime > cloudModified) {
-                    // Local deletion is newer - keep local (deleted)
-                    merged.set(key, localItem);
-                } else {
-                    // Cloud modification is newer - keep cloud (restored)
-                    merged.set(key, ensureVersionFields(cloudItem));
-                }
-            } else {
-                // Neither deleted - keep the one with higher version, or newer timestamp if versions equal
-                if (localVersion > cloudVersion || (localVersion === cloudVersion && localModified > cloudModified)) {
-                    merged.set(key, localItem);
-                } else {
-                    merged.set(key, cloudItem);
-                }
+        const updates = {};
+        Object.keys(feedbackObj).forEach(key => {
+            if (feedbackObj[key].projectName === projectName) {
+                updates[`feedback/${key}`] = null;
             }
+        });
+
+        if (Object.keys(updates).length > 0) {
+            await database.ref().update(updates);
+            console.log('Deleted feedback for project from Firebase:', projectName);
         }
-    });
-
-    return Array.from(merged.values());
+    } catch (error) {
+        console.error('Firebase feedback delete error:', error);
+    }
 }
 
-// Ensure item has version tracking fields
-function ensureVersionFields(item) {
-    if (!item._version) item._version = 1;
-    if (!item._lastModified) item._lastModified = item.timestamp || new Date().toISOString();
-    return item;
+// Sanitize keys for Firebase (no ., #, $, [, ])
+function sanitizeFirebaseKey(key) {
+    return key.replace(/[.#$\[\]]/g, '_');
 }
 
-// Force refresh from cloud (user-initiated via Refresh button)
+// Generate unique ID
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
+// Force refresh from Firebase (user-initiated via Refresh button)
+// Note: With real-time listeners, this is rarely needed
 async function forceRefreshFromCloud() {
-    console.log('User requested refresh from cloud...');
+    console.log('User requested refresh from Firebase...');
 
     // Show loading indicator on button
     const refreshBtn = document.getElementById('refreshProjects');
@@ -487,39 +449,32 @@ async function forceRefreshFromCloud() {
         refreshBtn.textContent = '...';
     }
 
-    // Clear cache timestamp to force refresh
-    localStorage.setItem('projectCacheTimestamp', '0');
+    try {
+        await fetchFromFirebaseAsSourceOfTruth();
+        renderProjectList();
 
-    if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        try {
-            await syncFromCloud();
-            localStorage.setItem('projectCacheTimestamp', Date.now().toString());
-            renderProjectList();
-
-            // If a project was selected, check if it still exists
-            if (currentProject) {
-                const stillExists = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
-                if (stillExists) {
-                    // Update without scrolling
-                    currentProject = stillExists;
-                    renderExistingFeedback();
-                } else {
-                    // Project was deleted, show empty state
-                    currentProject = null;
-                    document.getElementById('noProjectSelected').hidden = false;
-                    document.getElementById('projectView').hidden = true;
-                    document.getElementById('todoEmpty').hidden = false;
-                    document.getElementById('todoContainer').hidden = true;
-                }
+        // If a project was selected, check if it still exists
+        if (currentProject) {
+            const stillExists = allProjects.find(p => p.projectName === currentProject.projectName && !p._deletedAt);
+            if (stillExists) {
+                // Update without scrolling
+                currentProject = stillExists;
+                populateProjectView(stillExists);
+                renderExistingFeedback();
+            } else {
+                // Project was deleted, show empty state
+                currentProject = null;
+                document.getElementById('noProjectSelected').hidden = false;
+                document.getElementById('projectView').hidden = true;
+                document.getElementById('todoEmpty').hidden = false;
+                document.getElementById('todoContainer').hidden = true;
             }
-
-            console.log('Refresh complete');
-        } catch (err) {
-            console.error('Refresh failed:', err);
-            // Don't show alert - just log to console
         }
-    } else {
-        // Just reload local data
+
+        console.log('Refresh complete');
+    } catch (err) {
+        console.error('Refresh failed:', err);
+        // Fall back to local data
         loadFromLocalStorage();
         renderProjectList();
     }
@@ -891,20 +846,22 @@ async function updateProjectStatus(newStatus) {
     const now = new Date().toISOString();
 
     // Update the project in allProjects
+    const updatedProject = {
+        ...currentProject,
+        status: newStatus,
+        _lastModified: now,
+        _version: (currentProject._version || 0) + 1
+    };
+
     allProjects = allProjects.map(p => {
         if (p.projectName === projectName) {
-            return {
-                ...p,
-                status: newStatus,
-                _lastModified: now,
-                _version: (p._version || 0) + 1
-            };
+            return updatedProject;
         }
         return p;
     });
 
     // Update currentProject reference
-    currentProject = allProjects.find(p => p.projectName === projectName);
+    currentProject = updatedProject;
 
     // Save to localStorage
     const combined = [...allProjects, ...allFeedback];
@@ -919,8 +876,8 @@ async function updateProjectStatus(newStatus) {
     };
     logChange(projectName, user, 'updated', `Changed status to ${statusLabels[newStatus]}`);
 
-    // Sync to cloud (non-blocking)
-    syncToCloud();
+    // Sync to Firebase (non-blocking)
+    syncProjectToFirebase(updatedProject);
 
     // Re-render sidebar to show updated grouping
     renderProjectList();
@@ -1115,8 +1072,10 @@ function submitFeedback(e) {
 
     const user = getCurrentUser();
     const now = new Date().toISOString();
+    const feedbackId = generateId();
     const data = {
         type: 'feedback',
+        id: feedbackId,
         timestamp: now,
         projectName: currentProject.projectName,
         author: user,
@@ -1140,8 +1099,8 @@ function submitFeedback(e) {
     const combined = [...allProjects, ...allFeedback];
     localStorage.setItem('projectReviewData', JSON.stringify(combined));
 
-    // Sync to cloud (non-blocking)
-    syncToCloud();
+    // Sync to Firebase (non-blocking)
+    syncFeedbackToFirebase(data);
 
     // Log the change
     logChange(currentProject.projectName, user, 'feedback', 'Submitted feedback');
@@ -1463,8 +1422,9 @@ async function confirmDeleteProject() {
         }
     }
 
-    // Sync to cloud
-    await syncToCloud();
+    // Delete from Firebase
+    await deleteProjectFromFirebase(projectName);
+    await deleteFeedbackFromFirebase(projectName);
 
     // Re-render
     renderProjectList();
