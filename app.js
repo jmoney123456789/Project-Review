@@ -535,15 +535,38 @@ function cleanupDuplicates() {
 // Initialize
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
-    // Clean up any duplicates first
-    cleanupDuplicates();
-
-    // Sync from cloud on page load to get latest data
-    // This ensures the project dropdown (if any) has current projects
+    // CLOUD IS SOURCE OF TRUTH - fetch latest on page load
     if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        await syncFromCloud();
+        console.log('Fetching latest data from cloud...');
+        try {
+            const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+                headers: { 'X-Access-Key': JSONBIN_API_KEY }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                const cloudData = data.record || { projects: [], feedback: [] };
+                // Replace local data with cloud data
+                const projects = (cloudData.projects || []).filter(p => !p._deletedAt);
+                const feedback = (cloudData.feedback || []).filter(f => !f._deletedAt);
+                localStorage.setItem('projectReviewData', JSON.stringify([...projects, ...feedback]));
+                console.log('Synced from cloud:', projects.length, 'projects');
+            }
+        } catch (err) {
+            console.log('Cloud sync failed:', err);
+        }
     }
 
+    cleanupDuplicates();
     setupProjectForm();
     setupFeedbackForm();
 });
+
+// Helper: Clear all local data and resync from cloud (for debugging sync issues)
+window.resetAndResync = async function() {
+    console.log('Clearing all local data...');
+    localStorage.removeItem('projectReviewData');
+    localStorage.removeItem('projectImageCache');
+    localStorage.removeItem('projectCacheTimestamp');
+    console.log('Local data cleared. Refreshing page...');
+    location.reload();
+};

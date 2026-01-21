@@ -5,6 +5,21 @@
 // JSONBin.io Configuration - uses variables from app.js (loaded first)
 // JSONBIN_BIN_ID and JSONBIN_API_KEY are defined in app.js
 
+// Helper: Clear all local data and resync from cloud (for debugging sync issues)
+// Call from browser console: resetAndResync()
+window.resetAndResync = async function() {
+    console.log('Clearing all local data...');
+    localStorage.removeItem('projectReviewData');
+    localStorage.removeItem('projectImageCache');
+    localStorage.removeItem('projectCacheTimestamp');
+    localStorage.removeItem('projectTasks');
+    localStorage.removeItem('projectNotes');
+    localStorage.removeItem('projectChangesLog');
+    localStorage.removeItem('completedProjects');
+    console.log('Local data cleared. Refreshing page...');
+    location.reload();
+};
+
 // Team members
 const TEAM = ['Jason', 'Ash'];
 
@@ -88,36 +103,72 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function loadAllData() {
-    // Load tasks, notes, and changes log from localStorage
+    // Load tasks, notes, and changes log from localStorage (these are local-only)
     allTasks = JSON.parse(localStorage.getItem('projectTasks') || '{}');
     allNotes = JSON.parse(localStorage.getItem('projectNotes') || '{}');
     loadChangesLog();
 
-    // Load projects and feedback from localStorage first
-    loadFromLocalStorage();
-
-    // Migrate existing projects (add status and tags if missing)
-    migrateExistingProjects();
-
-    // Render immediately with local data (fast initial paint)
-    renderProjectList();
-
-    // ALWAYS sync from cloud on page load to get latest data
-    // This ensures visitors see up-to-date projects
-    // (No continuous polling - just on load and user actions)
+    // CLOUD IS SOURCE OF TRUTH - fetch from cloud FIRST
     if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        console.log('Syncing from cloud on page load...');
+        console.log('Fetching data from cloud (source of truth)...');
         try {
-            await syncFromCloud();
-            migrateExistingProjects();
-            renderProjectList();
-            console.log('Cloud sync complete. Projects:', allProjects.filter(p => !p._deletedAt).length);
+            await fetchFromCloudAsSourceOfTruth();
+            console.log('Cloud data loaded. Projects:', allProjects.filter(p => !p._deletedAt).length);
         } catch (err) {
-            console.log('Cloud sync failed, using local data:', err);
+            console.error('Cloud fetch failed, falling back to local:', err);
+            // Only use local data if cloud fails
+            loadFromLocalStorage();
         }
+    } else {
+        // No cloud configured, use local
+        loadFromLocalStorage();
     }
 
+    // Migrate and render
+    migrateExistingProjects();
+    renderProjectList();
+
     dataLoaded = true;
+}
+
+// Fetch from cloud as the single source of truth
+async function fetchFromCloudAsSourceOfTruth() {
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+        headers: { 'X-Access-Key': JSONBIN_API_KEY }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Cloud fetch failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const cloudData = data.record || { projects: [], feedback: [] };
+
+    // Cloud data completely replaces local data for projects/feedback
+    allProjects = (cloudData.projects || []).filter(p => !p._deletedAt);
+    allFeedback = (cloudData.feedback || []).filter(f => !f._deletedAt);
+
+    // Cache images locally (but cloud data is truth)
+    allProjects.forEach(p => {
+        if (p.images && p.images.length > 0) {
+            cacheProjectImages(p.projectName, p.images);
+        }
+    });
+
+    // Restore any cached images for projects that don't have them
+    allProjects = allProjects.map(p => {
+        if (!p.images || p.images.length === 0) {
+            const cached = getCachedImages(p.projectName);
+            if (cached) return { ...p, images: cached };
+        }
+        return p;
+    });
+
+    // Save cloud data to localStorage (as cache for offline)
+    const combined = [...allProjects, ...allFeedback];
+    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+
+    console.log('Cloud data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback');
 }
 
 // Migration function for existing projects

@@ -20,24 +20,60 @@ async function loadDashboardData() {
     allTasks = JSON.parse(localStorage.getItem('projectTasks') || '{}');
     completedProjects = JSON.parse(localStorage.getItem('completedProjects') || '{}');
 
-    // Load from localStorage first
-    loadFromLocalStorage();
-
-    // Render immediately with local data (fast initial paint)
-    renderDashboard();
-
-    // ALWAYS sync from cloud on page load to get latest data
-    // This ensures visitors see up-to-date projects
+    // CLOUD IS SOURCE OF TRUTH - fetch from cloud FIRST
     if (JSONBIN_BIN_ID && JSONBIN_API_KEY) {
-        console.log('Dashboard: Syncing from cloud...');
+        console.log('Dashboard: Fetching from cloud (source of truth)...');
         try {
-            await syncFromCloud();
-            console.log('Dashboard: Cloud sync complete. Projects:', allProjects.length);
-            renderDashboard();
+            await fetchFromCloudAsSourceOfTruth();
+            console.log('Dashboard: Cloud data loaded. Projects:', allProjects.length);
         } catch (err) {
-            console.log('Dashboard: Cloud sync failed:', err);
+            console.error('Dashboard: Cloud fetch failed, falling back to local:', err);
+            loadFromLocalStorage();
         }
+    } else {
+        loadFromLocalStorage();
     }
+
+    renderDashboard();
+}
+
+// Fetch from cloud as the single source of truth
+async function fetchFromCloudAsSourceOfTruth() {
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+        headers: { 'X-Access-Key': JSONBIN_API_KEY }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Cloud fetch failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const cloudData = data.record || { projects: [], feedback: [] };
+
+    // Cloud data completely replaces local data
+    allProjects = (cloudData.projects || []).filter(p => !p._deletedAt);
+    allFeedback = (cloudData.feedback || []).filter(f => !f._deletedAt);
+
+    // Cache and restore images
+    const imageCache = JSON.parse(localStorage.getItem('projectImageCache') || '{}');
+    allProjects.forEach(p => {
+        if (p.images && p.images.length > 0) {
+            imageCache[p.projectName] = p.images;
+        }
+    });
+    localStorage.setItem('projectImageCache', JSON.stringify(imageCache));
+
+    allProjects = allProjects.map(p => {
+        if (!p.images || p.images.length === 0) {
+            const cached = imageCache[p.projectName];
+            if (cached) return { ...p, images: cached };
+        }
+        return p;
+    });
+
+    // Save to localStorage as cache
+    const combined = [...allProjects, ...allFeedback];
+    localStorage.setItem('projectReviewData', JSON.stringify(combined));
 }
 
 function loadFromLocalStorage() {
