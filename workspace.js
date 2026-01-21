@@ -1372,6 +1372,7 @@ async function handleGalleryUpload(e) {
     if (files.length === 0) return;
 
     const maxImages = window.IMAGE_CONFIG?.maxImages || 50;
+    const currentImages = currentProject.images || [];
     const totalImages = getTotalProjectImageCount();
 
     // Check if we'd exceed the limit (total across overview + progress tabs)
