@@ -42,6 +42,7 @@ let progressFieldsDebounceTimer = null;
 let statusFilter = 'all'; // 'all', 'in_progress', 'completed', 'archived'
 let tagFilters = []; // Array of selected tags
 let sortOption = 'date_desc'; // 'date_desc', 'date_asc', 'name_asc', 'name_desc', 'edited_desc'
+let viewStyle = 'card'; // 'card' or 'list'
 
 // Firebase real-time listeners
 let projectsListener = null;
@@ -193,6 +194,7 @@ async function loadAllData() {
     allProgressTabs = JSON.parse(localStorage.getItem('projectProgressTabs') || '{}');
     allProjectFiles = JSON.parse(localStorage.getItem('projectFiles') || '{}');
     sortOption = localStorage.getItem('projectSortOption') || 'date_desc';
+    viewStyle = localStorage.getItem('projectViewStyle') || 'card';
     loadChangesLog();
 
     // FIREBASE IS SOURCE OF TRUTH - fetch from Firebase FIRST
@@ -1076,6 +1078,12 @@ function renderProjectList() {
     const sortDropdown = document.getElementById('sortSelect');
     if (sortDropdown) sortDropdown.value = sortOption;
 
+    // Update view dropdown and apply view style class
+    const viewDropdown = document.getElementById('viewSelect');
+    if (viewDropdown) viewDropdown.value = viewStyle;
+    container.classList.remove('card-view', 'list-view');
+    container.classList.add(viewStyle + '-view');
+
     if (activeProjects.length === 0) {
         container.innerHTML = `
             <div class="sidebar-empty">
@@ -1265,6 +1273,21 @@ function setSortOption(option) {
     const dropdown = document.getElementById('sortSelect');
     if (dropdown) dropdown.value = option;
     renderProjectList();
+}
+
+// Set view style
+function setViewStyle(style) {
+    viewStyle = style;
+    localStorage.setItem('projectViewStyle', style);
+    // Update dropdown if it exists
+    const dropdown = document.getElementById('viewSelect');
+    if (dropdown) dropdown.value = style;
+    // Apply class to project list
+    const container = document.getElementById('projectListSidebar');
+    if (container) {
+        container.classList.remove('card-view', 'list-view');
+        container.classList.add(style + '-view');
+    }
 }
 
 // Sort projects based on current sort option
