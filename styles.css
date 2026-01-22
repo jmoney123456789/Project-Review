@@ -179,6 +179,12 @@ body {
     background-clip: text;
 }
 
+.header-logo {
+    height: 32px;
+    width: auto;
+    object-fit: contain;
+}
+
 .header-nav {
     display: flex;
     gap: 0.5rem;
