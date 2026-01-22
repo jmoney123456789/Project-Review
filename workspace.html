@@ -126,8 +126,11 @@
                         <div class="files-dropdown" id="filesDropdown" hidden>
                             <div class="files-dropdown-header">
                                 <span>Indicator Files</span>
-                                <input type="file" id="projectFileInput" accept=".txt" hidden>
-                                <button class="files-upload-btn" id="uploadFileBtn" title="Upload .txt file">+ Upload</button>
+                                <div class="files-header-actions">
+                                    <button class="files-create-btn" id="createFileBtn" title="Create new .txt file">+ Create</button>
+                                    <input type="file" id="projectFileInput" accept=".txt" hidden>
+                                    <button class="files-upload-btn" id="uploadFileBtn" title="Upload .txt file">+ Upload</button>
+                                </div>
                             </div>
                             <div class="files-dropdown-list" id="filesDropdownList">
                                 <!-- Files loaded dynamically -->
@@ -453,6 +456,34 @@
                 <div class="modal-actions">
                     <button class="btn-cancel" id="deleteFileCancelBtn">Cancel</button>
                     <button class="btn-delete" id="deleteFileConfirmBtn">Delete File</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create File Modal -->
+    <div class="modal" id="createFileModal" hidden>
+        <div class="modal-backdrop" id="createFileModalBackdrop"></div>
+        <div class="modal-content modal-medium">
+            <div class="modal-header">
+                <h2>Create New File</h2>
+                <button class="modal-close" id="createFileModalClose">&times;</button>
+            </div>
+            <div class="modal-body create-file-body">
+                <div class="form-group">
+                    <label for="createFileName">File Name <span class="required">*</span></label>
+                    <div class="file-name-input-wrapper">
+                        <input type="text" id="createFileName" placeholder="Enter file name" maxlength="100">
+                        <span class="file-extension">.txt</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="createFileContent">Content</label>
+                    <textarea id="createFileContent" placeholder="Paste or type your content here..." rows="12"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="createFileCancelBtn">Cancel</button>
+                    <button class="btn-save" id="createFileSaveBtn">Save File</button>
                 </div>
             </div>
         </div>

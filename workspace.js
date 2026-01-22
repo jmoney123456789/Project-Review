@@ -1026,6 +1026,7 @@ function setupEventListeners() {
     document.getElementById('uploadFileBtn')?.addEventListener('click', () => {
         document.getElementById('projectFileInput')?.click();
     });
+    document.getElementById('createFileBtn')?.addEventListener('click', showCreateFileModal);
     document.getElementById('projectFileInput')?.addEventListener('change', handleProjectFileUpload);
 
     // Close dropdown when clicking outside
@@ -1034,6 +1035,7 @@ function setupEventListeners() {
     // Setup file modals
     setupFileViewerModal();
     setupDeleteFileModal();
+    setupCreateFileModal();
 
     // Delete image buttons
     document.getElementById('pvDeleteBtn')?.addEventListener('click', () => {
@@ -3035,6 +3037,134 @@ async function confirmDeleteFile() {
     hideDeleteFileModal();
 
     console.log('Deleted file:', deletedFile.fileName);
+}
+
+// ==========================================
+// Create File Modal
+// ==========================================
+
+function setupCreateFileModal() {
+    const modal = document.getElementById('createFileModal');
+    const backdrop = document.getElementById('createFileModalBackdrop');
+    const closeBtn = document.getElementById('createFileModalClose');
+    const cancelBtn = document.getElementById('createFileCancelBtn');
+    const saveBtn = document.getElementById('createFileSaveBtn');
+
+    if (!modal) return;
+
+    backdrop?.addEventListener('click', hideCreateFileModal);
+    closeBtn?.addEventListener('click', hideCreateFileModal);
+    cancelBtn?.addEventListener('click', hideCreateFileModal);
+    saveBtn?.addEventListener('click', saveCreatedFile);
+
+    // Allow Enter key in filename to trigger save (but not in textarea)
+    document.getElementById('createFileName')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            saveCreatedFile();
+        }
+    });
+}
+
+function showCreateFileModal() {
+    if (!currentProject) {
+        alert('Please select a project first');
+        return;
+    }
+
+    const modal = document.getElementById('createFileModal');
+    const nameInput = document.getElementById('createFileName');
+    const contentInput = document.getElementById('createFileContent');
+
+    // Clear inputs
+    if (nameInput) nameInput.value = '';
+    if (contentInput) contentInput.value = '';
+
+    if (modal) modal.hidden = false;
+
+    // Focus the name input
+    setTimeout(() => nameInput?.focus(), 100);
+
+    // Close the files dropdown
+    const dropdown = document.getElementById('filesDropdown');
+    if (dropdown) dropdown.hidden = true;
+}
+
+function hideCreateFileModal() {
+    const modal = document.getElementById('createFileModal');
+    if (modal) modal.hidden = true;
+}
+
+async function saveCreatedFile() {
+    if (!currentProject) return;
+
+    const nameInput = document.getElementById('createFileName');
+    const contentInput = document.getElementById('createFileContent');
+
+    const fileName = nameInput?.value?.trim();
+    const content = contentInput?.value || '';
+
+    // Validate file name
+    if (!fileName) {
+        alert('Please enter a file name');
+        nameInput?.focus();
+        return;
+    }
+
+    // Validate file name characters (no special characters that could cause issues)
+    const invalidChars = /[<>:"/\\|?*]/;
+    if (invalidChars.test(fileName)) {
+        alert('File name cannot contain these characters: < > : " / \\ | ? *');
+        nameInput?.focus();
+        return;
+    }
+
+    // Create full file name with .txt extension
+    const fullFileName = fileName + '.txt';
+
+    // Check if file with same name already exists
+    const existingFiles = getProjectFiles();
+    if (existingFiles.some(f => f.fileName.toLowerCase() === fullFileName.toLowerCase())) {
+        alert('A file with this name already exists');
+        nameInput?.focus();
+        return;
+    }
+
+    try {
+        // Create file object
+        const newFile = {
+            id: 'file_' + generateId(),
+            fileName: fullFileName,
+            content: content,
+            uploadedAt: new Date().toISOString(),
+            _lastModified: new Date().toISOString()
+        };
+
+        // Add to project files
+        const files = getProjectFiles();
+        files.push(newFile);
+
+        // Save and sync
+        allProjectFiles[currentProject.projectName] = files;
+        localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+        await syncProjectFilesToFirebase(currentProject.projectName, files);
+
+        // Log the change
+        const user = getCurrentUser();
+        logChange(currentProject.projectName, user, 'created', `Created file "${fullFileName}"`);
+
+        // Refresh dropdown
+        renderFilesDropdown();
+
+        // Hide modal
+        hideCreateFileModal();
+
+        console.log('File created:', fullFileName);
+
+    } catch (error) {
+        console.error('File creation error:', error);
+        alert('Failed to create file. Please try again.');
+    }
 }
 
 // ==========================================
