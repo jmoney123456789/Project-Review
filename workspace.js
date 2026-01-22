@@ -338,7 +338,7 @@ function setupFirebaseListeners() {
             const updated = allProjects.find(p => p.projectName === currentProject.projectName);
             if (updated) {
                 currentProject = updated;
-                populateProjectView(updated);
+                populateProjectView(updated, true); // preserveIndex = true
             } else {
                 // Project was deleted
                 currentProject = null;
@@ -448,11 +448,11 @@ function setupFirebaseListeners() {
         // Update tabs display if viewing a project
         if (currentProject) {
             renderProgressTabs();
-            // If on a progress tab, refresh the content
+            // If on a progress tab, refresh the content but preserve current image
             if (currentTabIndex > 0) {
                 const tabs = getProjectProgressTabs();
                 if (tabs[currentTabIndex - 1]) {
-                    populateProgressTab(tabs[currentTabIndex - 1]);
+                    populateProgressTab(tabs[currentTabIndex - 1], true); // preserveIndex = true
                 } else {
                     // Tab was deleted, switch to Overview
                     switchProgressTab(0);
@@ -582,7 +582,7 @@ async function syncFromCloud() {
         const updatedProject = allProjects.find(p => p.projectName === currentProject.projectName);
         if (updatedProject) {
             currentProject = updatedProject;
-            populateProjectView(updatedProject);
+            populateProjectView(updatedProject, true); // preserveIndex = true
             renderExistingFeedback();
         }
     }
@@ -875,7 +875,7 @@ async function forceRefreshFromCloud() {
             if (stillExists) {
                 // Update without scrolling
                 currentProject = stillExists;
-                populateProjectView(stillExists);
+                populateProjectView(stillExists, true); // preserveIndex = true
                 renderExistingFeedback();
             } else {
                 // Project was deleted, show empty state
@@ -1388,7 +1388,7 @@ function selectProject(project) {
 // ==========================================
 // Populate Project View
 // ==========================================
-function populateProjectView(project) {
+function populateProjectView(project, preserveIndex = false) {
     document.getElementById('pvProjectName').textContent = project.projectName;
     document.getElementById('pvProjectType').textContent = project.projectType;
     document.getElementById('pvCreator').textContent = project.creator || 'Jason';
@@ -1423,7 +1423,7 @@ function populateProjectView(project) {
     console.log('Images count:', project.images ? project.images.length : 0);
 
     // Setup gallery
-    setupGallery(project.images || []);
+    setupGallery(project.images || [], preserveIndex);
 
     // Update image count display
     updateImageCount();
@@ -1477,7 +1477,7 @@ async function updateProjectStatus(newStatus) {
 // ==========================================
 // Gallery
 // ==========================================
-function setupGallery(images) {
+function setupGallery(images, preserveIndex = false) {
     const mainImg = document.getElementById('pvMainImage');
     const noImages = document.getElementById('pvNoImages');
     const prevBtn = document.getElementById('pvPrevBtn');
@@ -1486,6 +1486,11 @@ function setupGallery(images) {
     const thumbsContainer = document.getElementById('pvThumbnails');
 
     thumbsContainer.innerHTML = '';
+
+    // Only reset index if not preserving, or if current index is out of bounds
+    if (!preserveIndex || currentImageIndex >= (images?.length || 0)) {
+        currentImageIndex = 0;
+    }
 
     if (!images || images.length === 0) {
         mainImg.style.display = 'none';
@@ -1501,10 +1506,9 @@ function setupGallery(images) {
     noImages.style.display = 'none';
     if (deleteBtn) deleteBtn.hidden = false;
 
-    // Get first image (handle both string and object format)
-    const firstImg = getImageData(images, 0);
-    mainImg.src = firstImg.src;
-    currentImageIndex = 0;
+    // Get current image (handle both string and object format)
+    const currentImg = getImageData(images, currentImageIndex);
+    mainImg.src = currentImg.src;
 
     if (images.length > 1) {
         prevBtn.hidden = false;
@@ -1513,7 +1517,7 @@ function setupGallery(images) {
         images.forEach((img, index) => {
             const imgData = getImageData(images, index);
             const thumb = document.createElement('div');
-            thumb.className = 'pv-thumb' + (index === 0 ? ' active' : '');
+            thumb.className = 'pv-thumb' + (index === currentImageIndex ? ' active' : '');
             thumb.innerHTML = `<img src="${imgData.src}" alt="Thumbnail ${index + 1}">`;
             thumb.addEventListener('click', () => selectImage(index));
             thumbsContainer.appendChild(thumb);
@@ -1523,7 +1527,7 @@ function setupGallery(images) {
         nextBtn.hidden = true;
     }
 
-    // Load note for first image
+    // Load note for current image
     loadOverviewImageNote();
 }
 
@@ -2256,7 +2260,7 @@ function switchProgressTab(index) {
 }
 
 // Populate progress tab content
-function populateProgressTab(tab) {
+function populateProgressTab(tab, preserveIndex = false) {
     // Set tab name
     const nameEl = document.getElementById('progressTabName');
     if (nameEl) nameEl.textContent = tab.tabName;
@@ -2272,7 +2276,7 @@ function populateProgressTab(tab) {
     }
 
     // Setup gallery
-    setupProgressGallery(tab.images || []);
+    setupProgressGallery(tab.images || [], preserveIndex);
 
     // Update image count
     updateProgressImageCount(tab);
@@ -2288,7 +2292,7 @@ function populateProgressTab(tab) {
 }
 
 // Setup progress gallery
-function setupProgressGallery(images) {
+function setupProgressGallery(images, preserveIndex = false) {
     const mainImg = document.getElementById('progressMainImage');
     const noImages = document.getElementById('progressNoImages');
     const prevBtn = document.getElementById('progressPrevBtn');
@@ -2297,7 +2301,11 @@ function setupProgressGallery(images) {
     const thumbsContainer = document.getElementById('progressThumbnails');
 
     thumbsContainer.innerHTML = '';
-    currentProgressImageIndex = 0;
+
+    // Only reset index if not preserving, or if current index is out of bounds
+    if (!preserveIndex || currentProgressImageIndex >= (images?.length || 0)) {
+        currentProgressImageIndex = 0;
+    }
 
     if (!images || images.length === 0) {
         mainImg.style.display = 'none';
@@ -2313,9 +2321,9 @@ function setupProgressGallery(images) {
     noImages.style.display = 'none';
     if (deleteBtn) deleteBtn.hidden = false;
 
-    // Get first image (handle both string and object format)
-    const firstImg = getImageData(images, 0);
-    mainImg.src = firstImg.src;
+    // Get current image (handle both string and object format)
+    const currentImg = getImageData(images, currentProgressImageIndex);
+    mainImg.src = currentImg.src;
 
     if (images.length > 1) {
         prevBtn.hidden = false;
@@ -2324,7 +2332,7 @@ function setupProgressGallery(images) {
         images.forEach((img, index) => {
             const imgData = getImageData(images, index);
             const thumb = document.createElement('div');
-            thumb.className = 'pv-thumb' + (index === 0 ? ' active' : '');
+            thumb.className = 'pv-thumb' + (index === currentProgressImageIndex ? ' active' : '');
             thumb.innerHTML = `<img src="${imgData.src}" alt="Thumbnail ${index + 1}">`;
             thumb.addEventListener('click', () => selectProgressImage(index));
             thumbsContainer.appendChild(thumb);
@@ -2334,7 +2342,7 @@ function setupProgressGallery(images) {
         nextBtn.hidden = true;
     }
 
-    // Load note for first image
+    // Load note for current image
     loadProgressImageNote();
 }
 
