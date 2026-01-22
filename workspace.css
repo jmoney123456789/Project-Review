@@ -234,9 +234,8 @@
 .project-list-sidebar.list-view .sidebar-project-name {
     font-size: 0.8rem;
     margin-bottom: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .project-list-sidebar.list-view .sidebar-project-meta {
