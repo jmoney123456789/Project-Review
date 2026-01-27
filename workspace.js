@@ -1671,30 +1671,19 @@ async function handleGalleryUpload(e) {
     addBtn.disabled = true;
 
     try {
-        // Upload images to Firebase Storage
-        console.log('Uploading', validFiles.length, 'images to Firebase Storage...');
-        const imageMetadata = [];
-        for (const file of validFiles) {
-            // Compress image to blob
-            const blob = await window.compressImageToBlob(file);
+        // Compress images to base64 (Storage has CORS issues)
+        console.log('Compressing', validFiles.length, 'images...');
+        const base64Images = await window.compressImages(validFiles);
 
-            // Generate unique image name
-            const timestamp = Date.now();
-            const random = Math.random().toString(36).substring(2, 8);
-            const imageName = `${timestamp}_${random}`;
+        // Convert to metadata format
+        const imageMetadata = base64Images.map((base64, index) => ({
+            src: base64,
+            note: '',
+            uploadedAt: new Date().toISOString(),
+            filename: validFiles[index].name
+        }));
 
-            // Upload to Firebase Storage
-            const url = await window.uploadImageToStorage(blob, currentProject.projectName, imageName);
-
-            // Store metadata
-            imageMetadata.push({
-                url: url,
-                note: '',
-                uploadedAt: new Date().toISOString(),
-                filename: file.name
-            });
-        }
-        console.log('Upload complete:', imageMetadata.length, 'images uploaded to Storage');
+        console.log('✓ Compressed', imageMetadata.length, 'images');
 
         // Add to project
         const newImages = [...currentImages, ...imageMetadata];
@@ -2524,30 +2513,19 @@ async function handleProgressImageUpload(e) {
     addBtn.disabled = true;
 
     try {
-        // Upload images to Firebase Storage
-        console.log('Uploading', validFiles.length, 'images to Firebase Storage...');
-        const imageMetadata = [];
-        for (const file of validFiles) {
-            // Compress image to blob
-            const blob = await window.compressImageToBlob(file);
+        // Compress images to base64 (Storage has CORS issues)
+        console.log('Compressing', validFiles.length, 'images...');
+        const base64Images = await window.compressImages(validFiles);
 
-            // Generate unique image name
-            const timestamp = Date.now();
-            const random = Math.random().toString(36).substring(2, 8);
-            const imageName = `${timestamp}_${random}`;
+        // Convert to metadata format
+        const imageMetadata = base64Images.map((base64, index) => ({
+            src: base64,
+            note: '',
+            uploadedAt: new Date().toISOString(),
+            filename: validFiles[index].name
+        }));
 
-            // Upload to Firebase Storage
-            const url = await window.uploadImageToStorage(blob, currentProject.projectName, imageName);
-
-            // Store metadata
-            imageMetadata.push({
-                url: url,
-                note: '',
-                uploadedAt: new Date().toISOString(),
-                filename: file.name
-            });
-        }
-        console.log('Upload complete:', imageMetadata.length, 'images uploaded to Storage');
+        console.log('✓ Compressed', imageMetadata.length, 'images');
 
         // Get current tab
         const tabs = getProjectProgressTabs();

@@ -599,69 +599,30 @@ function setupProjectForm() {
                 _lastModified: now
             };
 
-            // Upload images - try Firebase Storage, fallback to base64 if it fails
+            // Process images - using base64 for now (Storage has CORS issues)
             const files = window.getUploadedFiles ? window.getUploadedFiles() : [];
             if (files.length > 0) {
-                // Limit to 5 images on initial submission to avoid issues
-                const filesToProcess = files.slice(0, 5);
-                if (files.length > 5) {
-                    alert(`Only the first 5 images will be uploaded. You can add more in the workspace.`);
+                // Limit to 3 images to avoid localStorage quota
+                const filesToProcess = files.slice(0, 3);
+                if (files.length > 3) {
+                    alert(`Limited to 3 images on submission. Add more in workspace after submitting.`);
                 }
 
                 console.log('Processing', filesToProcess.length, 'images...');
 
                 try {
-                    const imageMetadata = [];
-                    let storageWorking = true;
+                    // Use base64 compression (fast and works)
+                    const base64Images = await compressImages(filesToProcess);
 
-                    for (let i = 0; i < filesToProcess.length; i++) {
-                        const file = filesToProcess[i];
-                        console.log(`Processing image ${i + 1}/${filesToProcess.length}: ${file.name}`);
+                    // Convert to metadata format
+                    data.images = base64Images.map((base64, index) => ({
+                        src: base64,
+                        note: '',
+                        uploadedAt: new Date().toISOString(),
+                        filename: filesToProcess[index].name
+                    }));
 
-                        if (storageWorking) {
-                            try {
-                                // Try Storage first
-                                const blob = await compressImageToBlob(file);
-                                const timestamp = Date.now();
-                                const random = Math.random().toString(36).substring(2, 8);
-                                const imageName = `${timestamp}_${random}`;
-                                const url = await uploadImageToStorage(blob, data.projectName, imageName);
-
-                                imageMetadata.push({
-                                    url: url,
-                                    note: '',
-                                    uploadedAt: new Date().toISOString(),
-                                    filename: file.name
-                                });
-                                console.log(`✓ Uploaded ${file.name} to Storage`);
-                            } catch (storageError) {
-                                console.warn('Storage failed, switching to base64 fallback for remaining images');
-                                storageWorking = false;
-                                // Process this image as base64
-                                const base64 = await compressImage(file);
-                                imageMetadata.push({
-                                    src: base64,
-                                    note: '',
-                                    uploadedAt: new Date().toISOString(),
-                                    filename: file.name
-                                });
-                                console.log(`✓ Saved ${file.name} as base64`);
-                            }
-                        } else {
-                            // Use base64 for remaining images
-                            const base64 = await compressImage(file);
-                            imageMetadata.push({
-                                src: base64,
-                                note: '',
-                                uploadedAt: new Date().toISOString(),
-                                filename: file.name
-                            });
-                            console.log(`✓ Saved ${file.name} as base64`);
-                        }
-                    }
-
-                    data.images = imageMetadata;
-                    console.log('✓ All images processed successfully');
+                    console.log('✓ Processed', data.images.length, 'images');
                     data.attachments = filesToProcess.map(f => f.name).join(', ');
 
                 } catch (error) {
