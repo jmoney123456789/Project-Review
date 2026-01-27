@@ -121,6 +121,16 @@ function getCachedImages(projectName) {
     return cache[projectName] || null;
 }
 
+// Strip base64 images from projects before caching to localStorage
+// Images are cached separately via projectImageCache
+function getCombinedForCache() {
+    const projectsWithoutImages = allProjects.map(p => {
+        const { images, ...rest } = p;
+        return rest;
+    });
+    return [...projectsWithoutImages, ...allFeedback];
+}
+
 function clearOldImageCache() {
     // If storage is full, remove images for deleted projects
     const cache = getImageCache();
@@ -282,7 +292,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
             allTasks[projectName] = tasksObj[key].tasks;
         }
     });
-    localStorage.setItem('projectTasks', JSON.stringify(allTasks));
+    safeSetLocalStorage('projectTasks', allTasks);
 
     // Load notes from Firebase - convert from {projectKey: {content: "..."}} to {projectName: "..."}
     allNotes = {};
@@ -294,7 +304,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
             allNotes[projectName] = notesObj[key].content;
         }
     });
-    localStorage.setItem('projectNotes', JSON.stringify(allNotes));
+    safeSetLocalStorage('projectNotes', allNotes);
 
     // Load progress tabs from Firebase - convert from {projectKey: [tabs]} to {projectName: [tabs]}
     allProgressTabs = {};
@@ -307,7 +317,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
             allProgressTabs[projectName] = tabsData.tabs;
         }
     });
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
 
     // Load project files from Firebase - convert from {projectKey: {files: [...]}} to {projectName: [...]}
     allProjectFiles = {};
@@ -320,7 +330,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
             allProjectFiles[projectName] = filesData.files;
         }
     });
-    localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+    safeSetLocalStorage('projectFiles', allProjectFiles);
 
     // Cache images locally (but Firebase data is truth)
     allProjects.forEach(p => {
@@ -339,8 +349,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
     });
 
     // Save Firebase data to localStorage (as cache for offline)
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+    safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
     console.log('Firebase data synced:', allProjects.length, 'projects,', allFeedback.length, 'feedback,', Object.keys(allTasks).length, 'task lists,', Object.keys(allNotes).length, 'notes,', Object.keys(allProgressTabs).length, 'progress tab sets,', Object.keys(allProjectFiles).length, 'file sets');
 }
@@ -369,8 +378,7 @@ function setupFirebaseListeners() {
         });
 
         // Update localStorage
-        const combined = [...allProjects, ...allFeedback];
-        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+        safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
         console.log('Real-time update: Projects changed, now have', allProjects.length);
         renderProjectList();
@@ -398,8 +406,7 @@ function setupFirebaseListeners() {
         allFeedback = Object.values(feedbackObj).filter(f => !f._deletedAt);
 
         // Update localStorage
-        const combined = [...allProjects, ...allFeedback];
-        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+        safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
         console.log('Real-time update: Feedback changed, now have', allFeedback.length);
 
@@ -427,7 +434,7 @@ function setupFirebaseListeners() {
         });
 
         // Update localStorage
-        localStorage.setItem('projectTasks', JSON.stringify(allTasks));
+        safeSetLocalStorage('projectTasks', allTasks);
 
         console.log('Real-time update: Tasks changed, now have', Object.keys(allTasks).length, 'task lists');
 
@@ -455,7 +462,7 @@ function setupFirebaseListeners() {
         });
 
         // Update localStorage
-        localStorage.setItem('projectNotes', JSON.stringify(allNotes));
+        safeSetLocalStorage('projectNotes', allNotes);
 
         console.log('Real-time update: Notes changed, now have', Object.keys(allNotes).length, 'notes');
 
@@ -483,7 +490,7 @@ function setupFirebaseListeners() {
         });
 
         // Update localStorage
-        localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+        safeSetLocalStorage('projectProgressTabs', allProgressTabs);
 
         console.log('Real-time update: Progress tabs changed, now have', Object.keys(allProgressTabs).length, 'tab sets');
 
@@ -521,7 +528,7 @@ function setupFirebaseListeners() {
         });
 
         // Update localStorage
-        localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+        safeSetLocalStorage('projectFiles', allProjectFiles);
 
         console.log('Real-time update: Project files changed, now have', Object.keys(allProjectFiles).length, 'file sets');
 
@@ -587,8 +594,7 @@ function migrateExistingProjects() {
     if (needsSync) {
         console.log('Migrated projects with status and version fields');
         // Save migrated data locally only - don't auto-sync to save API requests
-        const combined = [...allProjects, ...allFeedback];
-        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+        safeSetLocalStorage('projectReviewData', getCombinedForCache());
         // Cloud sync will happen when user submits new data or clicks Refresh
     }
 }
@@ -664,8 +670,7 @@ async function syncToCloud() {
         });
 
         // Save to localStorage
-        const combined = [...allProjects, ...allFeedback];
-        localStorage.setItem('projectReviewData', JSON.stringify(combined));
+        safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
         console.log('Synced to Firebase successfully');
     } catch (error) {
@@ -817,7 +822,7 @@ async function syncProgressTabToFirebase(tab) {
 
     // Save locally
     allProgressTabs[projectName] = tabs;
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
 
     // Sync to Firebase
     await syncProgressTabsToFirebase(projectName, tabs);
@@ -1520,8 +1525,7 @@ async function updateProjectStatus(newStatus) {
     currentProject = updatedProject;
 
     // Save to localStorage
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+    safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
     // Log the change
     const user = getCurrentUser();
@@ -1782,7 +1786,7 @@ function saveNotes() {
     const notes = document.getElementById('pvNotesInput').value.trim();
     const oldNotes = allNotes[currentProject.projectName] || '';
     allNotes[currentProject.projectName] = notes;
-    localStorage.setItem('projectNotes', JSON.stringify(allNotes));
+    safeSetLocalStorage('projectNotes', allNotes);
 
     // Sync to Firebase (non-blocking)
     syncNotesToFirebase(currentProject.projectName, notes);
@@ -1907,8 +1911,7 @@ function submitFeedback(e) {
     allFeedback.push(data);
 
     // Save to localStorage
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+    safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
     // Sync to Firebase (non-blocking)
     syncFeedbackToFirebase(data);
@@ -1932,7 +1935,7 @@ function getProjectTasks() {
 
 function saveProjectTasks(tasks) {
     allTasks[currentProject.projectName] = tasks;
-    localStorage.setItem('projectTasks', JSON.stringify(allTasks));
+    safeSetLocalStorage('projectTasks', allTasks);
 
     // Sync to Firebase (non-blocking)
     syncTasksToFirebase(currentProject.projectName, tasks);
@@ -2204,12 +2207,11 @@ async function confirmDeleteProject() {
     localStorage.setItem('completedProjects', JSON.stringify(completedProjects));
 
     // 6. Save cleaned data to localStorage
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
-    localStorage.setItem('projectTasks', JSON.stringify(allTasks));
-    localStorage.setItem('projectNotes', JSON.stringify(allNotes));
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
-    localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+    safeSetLocalStorage('projectReviewData', getCombinedForCache());
+    safeSetLocalStorage('projectTasks', allTasks);
+    safeSetLocalStorage('projectNotes', allNotes);
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
+    safeSetLocalStorage('projectFiles', allProjectFiles);
     localStorage.setItem('projectChangesLog', JSON.stringify(allChangesLog));
 
     console.log(`HARD DELETED project "${projectName}" and all associated data`);
@@ -2587,7 +2589,7 @@ async function saveProgressFields() {
 
     // Save and sync
     allProgressTabs[currentProject.projectName] = tabs;
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
     await syncProgressTabsToFirebase(currentProject.projectName, tabs);
 
     // Update indicator
@@ -2712,7 +2714,7 @@ async function createProgressTab() {
 
     // Save and sync
     allProgressTabs[currentProject.projectName] = tabs;
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
     await syncProgressTabsToFirebase(currentProject.projectName, tabs);
 
     // Log the change
@@ -2788,7 +2790,7 @@ async function confirmDeleteProgressTab() {
 
     // Save and sync
     allProgressTabs[currentProject.projectName] = tabs;
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
     await syncProgressTabsToFirebase(currentProject.projectName, tabs);
 
     // Log the change
@@ -2933,7 +2935,7 @@ async function handleProjectFileUpload(e) {
 
         // Save and sync
         allProjectFiles[currentProject.projectName] = files;
-        localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+        safeSetLocalStorage('projectFiles', allProjectFiles);
         await syncProjectFilesToFirebase(currentProject.projectName, files);
 
         // Log the change
@@ -3082,7 +3084,7 @@ async function confirmDeleteFile() {
 
     // Save and sync
     allProjectFiles[currentProject.projectName] = files;
-    localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+    safeSetLocalStorage('projectFiles', allProjectFiles);
     await syncProjectFilesToFirebase(currentProject.projectName, files);
 
     // Log the change
@@ -3205,7 +3207,7 @@ async function saveCreatedFile() {
 
         // Save and sync
         allProjectFiles[currentProject.projectName] = files;
-        localStorage.setItem('projectFiles', JSON.stringify(allProjectFiles));
+        safeSetLocalStorage('projectFiles', allProjectFiles);
         await syncProjectFilesToFirebase(currentProject.projectName, files);
 
         // Log the change
@@ -3301,8 +3303,7 @@ async function deleteOverviewImage(index) {
     currentProject = updatedProject;
 
     // Save to localStorage
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+    safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
     // Update image cache
     cacheProjectImages(currentProject.projectName, images);
@@ -3342,7 +3343,7 @@ async function deleteProgressImage(index) {
 
     // Save and sync
     allProgressTabs[currentProject.projectName] = tabs;
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
     await syncProgressTabsToFirebase(currentProject.projectName, tabs);
 
     // Log the change
@@ -3425,8 +3426,7 @@ function setOverviewImageNote(index, note) {
     });
 
     // Save locally
-    const combined = [...allProjects, ...allFeedback];
-    localStorage.setItem('projectReviewData', JSON.stringify(combined));
+    safeSetLocalStorage('projectReviewData', getCombinedForCache());
 
     // Sync to Firebase (debounced in calling function)
     return currentProject;
@@ -3462,7 +3462,7 @@ function setProgressImageNote(index, note) {
 
     // Save locally
     allProgressTabs[currentProject.projectName] = tabs;
-    localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
 
     return tabs;
 }
