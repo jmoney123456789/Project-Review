@@ -72,12 +72,48 @@ function saveImageCache(cache) {
     }
 }
 
+// Helper: Safely save to localStorage without throwing errors
+function safeSetLocalStorage(key, data) {
+    try {
+        localStorage.setItem(key, JSON.stringify(data));
+        return true;
+    } catch (e) {
+        console.warn(`⚠ localStorage quota exceeded - skipping cache for ${key}`);
+        console.warn('No problem - Firebase is source of truth, data is saved!');
+        return false;
+    }
+}
+
 function cacheProjectImages(projectName, images) {
     if (!images || images.length === 0) return;
+
+    // Filter out Storage URLs (they don't need caching - already remote)
+    // Only cache base64 images for backward compatibility
+    const imagesToCache = images.filter(img => {
+        if (typeof img === 'string') {
+            // Legacy format: cache only if it's base64 (starts with data:)
+            return img.startsWith('data:');
+        }
+        if (img.url) {
+            // New format: Storage URL, don't cache
+            return false;
+        }
+        if (img.src) {
+            // Old format: cache only if it's base64
+            return img.src.startsWith('data:');
+        }
+        return false;
+    });
+
+    if (imagesToCache.length === 0) {
+        console.log(`No base64 images to cache for "${projectName}" (Storage URLs don't need caching)`);
+        return;
+    }
+
     const cache = getImageCache();
-    cache[projectName] = images;
+    cache[projectName] = imagesToCache;
     saveImageCache(cache);
-    console.log(`Cached ${images.length} images for "${projectName}"`);
+    console.log(`Cached ${imagesToCache.length} base64 images for "${projectName}"`);
 }
 
 function getCachedImages(projectName) {
@@ -102,11 +138,15 @@ function clearOldImageCache() {
 // Initialize
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('=== Workspace Initializing ===');
+
     await loadAllData();
     setupEventListeners();
     setupDeleteModal();
     setupFirebaseListeners(); // Real-time sync - no refresh needed!
     setupMobileNav(); // Mobile navigation
+
+    console.log('=== Workspace Ready ===');
 });
 
 // ==========================================
@@ -1631,13 +1671,33 @@ async function handleGalleryUpload(e) {
     addBtn.disabled = true;
 
     try {
-        // Compress images
-        console.log('Compressing', validFiles.length, 'images...');
-        const compressedImages = await window.compressImages(validFiles);
-        console.log('Compressed', compressedImages.length, 'images');
+        // Upload images to Firebase Storage
+        console.log('Uploading', validFiles.length, 'images to Firebase Storage...');
+        const imageMetadata = [];
+        for (const file of validFiles) {
+            // Compress image to blob
+            const blob = await window.compressImageToBlob(file);
+
+            // Generate unique image name
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 8);
+            const imageName = `${timestamp}_${random}`;
+
+            // Upload to Firebase Storage
+            const url = await window.uploadImageToStorage(blob, currentProject.projectName, imageName);
+
+            // Store metadata
+            imageMetadata.push({
+                url: url,
+                note: '',
+                uploadedAt: new Date().toISOString(),
+                filename: file.name
+            });
+        }
+        console.log('Upload complete:', imageMetadata.length, 'images uploaded to Storage');
 
         // Add to project
-        const newImages = [...currentImages, ...compressedImages];
+        const newImages = [...currentImages, ...imageMetadata];
         const now = new Date().toISOString();
 
         const updatedProject = {
@@ -1658,19 +1718,16 @@ async function handleGalleryUpload(e) {
         // Update currentProject reference
         currentProject = updatedProject;
 
-        // Save to localStorage
-        const combined = [...allProjects, ...allFeedback];
-        localStorage.setItem('projectReviewData', JSON.stringify(combined));
-
-        // Cache images locally
-        cacheProjectImages(currentProject.projectName, newImages);
-
-        // Sync to Firebase
+        // Sync to Firebase FIRST (source of truth)
         await syncProjectToFirebase(updatedProject);
+
+        // Try to cache to localStorage (not critical if it fails)
+        const combined = [...allProjects, ...allFeedback];
+        safeSetLocalStorage('projectReviewData', combined);
 
         // Log the change
         const user = getCurrentUser();
-        logChange(currentProject.projectName, user, 'updated', `Added ${compressedImages.length} screenshot(s)`);
+        logChange(currentProject.projectName, user, 'updated', `Added ${imageMetadata.length} screenshot(s)`);
 
         // Refresh gallery
         setupGallery(newImages);
@@ -2467,8 +2524,30 @@ async function handleProgressImageUpload(e) {
     addBtn.disabled = true;
 
     try {
-        // Compress images
-        const compressedImages = await window.compressImages(validFiles);
+        // Upload images to Firebase Storage
+        console.log('Uploading', validFiles.length, 'images to Firebase Storage...');
+        const imageMetadata = [];
+        for (const file of validFiles) {
+            // Compress image to blob
+            const blob = await window.compressImageToBlob(file);
+
+            // Generate unique image name
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 8);
+            const imageName = `${timestamp}_${random}`;
+
+            // Upload to Firebase Storage
+            const url = await window.uploadImageToStorage(blob, currentProject.projectName, imageName);
+
+            // Store metadata
+            imageMetadata.push({
+                url: url,
+                note: '',
+                uploadedAt: new Date().toISOString(),
+                filename: file.name
+            });
+        }
+        console.log('Upload complete:', imageMetadata.length, 'images uploaded to Storage');
 
         // Get current tab
         const tabs = getProjectProgressTabs();
@@ -2481,17 +2560,19 @@ async function handleProgressImageUpload(e) {
 
         // Add images to tab
         const currentImages = tab.images || [];
-        tab.images = [...currentImages, ...compressedImages];
+        tab.images = [...currentImages, ...imageMetadata];
         tab._lastModified = new Date().toISOString();
 
-        // Save and sync
+        // Sync to Firebase FIRST (source of truth)
         allProgressTabs[currentProject.projectName] = tabs;
-        localStorage.setItem('projectProgressTabs', JSON.stringify(allProgressTabs));
         await syncProgressTabsToFirebase(currentProject.projectName, tabs);
+
+        // Try to cache to localStorage (not critical if it fails)
+        safeSetLocalStorage('projectProgressTabs', allProgressTabs);
 
         // Log the change
         const user = getCurrentUser();
-        logChange(currentProject.projectName, user, 'updated', `Added ${compressedImages.length} screenshot(s) to "${tab.tabName}"`);
+        logChange(currentProject.projectName, user, 'updated', `Added ${imageMetadata.length} screenshot(s) to "${tab.tabName}"`);
 
         // Refresh gallery
         setupProgressGallery(tab.images);
@@ -3312,10 +3393,23 @@ function getImageData(images, index) {
         return { src: '', note: '' };
     }
     const img = images[index];
+
+    // New format: {url: "https://...", note: "..."}
+    if (img.url) {
+        return { src: img.url, note: img.note || '' };
+    }
+
+    // Old format: {src: "data:...", note: "..."}
+    if (img.src) {
+        return { src: img.src, note: img.note || '' };
+    }
+
+    // Legacy format: "data:..." or "https://..." string
     if (typeof img === 'string') {
         return { src: img, note: '' };
     }
-    return { src: img.src || '', note: img.note || '' };
+
+    return { src: '', note: '' };
 }
 
 // Set image note for overview gallery
@@ -3325,10 +3419,18 @@ function setOverviewImageNote(index, note) {
     let images = currentProject.images;
     if (index < 0 || index >= images.length) return;
 
-    // Convert to object format if needed
+    // Handle different image formats
     if (typeof images[index] === 'string') {
+        // Legacy format: convert string to object
         images[index] = { src: images[index], note: note };
+    } else if (images[index].url) {
+        // New format: has url property
+        images[index].note = note;
+    } else if (images[index].src) {
+        // Old format: has src property
+        images[index].note = note;
     } else {
+        // Unknown format, set note anyway
         images[index].note = note;
     }
 
@@ -3363,10 +3465,18 @@ function setProgressImageNote(index, note) {
     if (!tab || !tab.images) return;
     if (index < 0 || index >= tab.images.length) return;
 
-    // Convert to object format if needed
+    // Handle different image formats
     if (typeof tab.images[index] === 'string') {
+        // Legacy format: convert string to object
         tab.images[index] = { src: tab.images[index], note: note };
+    } else if (tab.images[index].url) {
+        // New format: has url property
+        tab.images[index].note = note;
+    } else if (tab.images[index].src) {
+        // Old format: has src property
+        tab.images[index].note = note;
     } else {
+        // Unknown format, set note anyway
         tab.images[index].note = note;
     }
 

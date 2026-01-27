@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Storage Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .test-section {
+            background: #2a2a2a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background: #10b981; color: white; }
+        .error { background: #ef4444; color: white; }
+        .info { background: #3b82f6; color: white; }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover { background: #4f46e5; }
+        pre {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 Firebase Storage Test</h1>
+
+    <div class="test-section">
+        <h2>Step 1: Check Firebase Initialization</h2>
+        <button onclick="testFirebaseInit()">Test Firebase</button>
+        <div id="firebase-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Test Image Upload</h2>
+        <input type="file" id="testFile" accept="image/*">
+        <button onclick="testImageUpload()">Upload Test Image</button>
+        <div id="upload-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Console Logs</h2>
+        <pre id="console-logs"></pre>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAI2H8QewQ_M7vmA-FtfXJq4N_brRydec8",
+            authDomain: "project-review-fe0cc.firebaseapp.com",
+            databaseURL: "https://project-review-fe0cc-default-rtdb.firebaseio.com",
+            projectId: "project-review-fe0cc",
+            storageBucket: "project-review-fe0cc.appspot.com",
+            messagingSenderId: "496818003443",
+            appId: "1:496818003443:web:8fde3dd33c3082dad70686"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const storage = firebase.storage();
+
+        // Log capture
+        const logOutput = [];
+        const originalLog = console.log;
+        const originalError = console.error;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            logOutput.push('[LOG] ' + args.join(' '));
+            updateConsole();
+        };
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            logOutput.push('[ERROR] ' + args.join(' '));
+            updateConsole();
+        };
+
+        function updateConsole() {
+            document.getElementById('console-logs').textContent = logOutput.join('\n');
+        }
+
+        function showStatus(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function testFirebaseInit() {
+            console.log('Testing Firebase initialization...');
+            try {
+                console.log('✓ Firebase app initialized');
+                console.log('✓ Database:', database ? 'Connected' : 'Not connected');
+                console.log('✓ Storage:', storage ? 'Initialized' : 'Not initialized');
+                console.log('Storage bucket:', firebaseConfig.storageBucket);
+
+                showStatus('firebase-status',
+                    '✓ Firebase is initialized correctly!<br>' +
+                    'Database: ' + (database ? 'Connected' : 'Not connected') + '<br>' +
+                    'Storage: ' + (storage ? 'Initialized' : 'Not initialized') + '<br>' +
+                    'Bucket: ' + firebaseConfig.storageBucket,
+                    'success');
+            } catch (error) {
+                console.error('Firebase init error:', error);
+                showStatus('firebase-status', '✗ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function testImageUpload() {
+            const fileInput = document.getElementById('testFile');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showStatus('upload-status', '⚠ Please select a file first', 'info');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            console.log('Testing image upload...');
+            console.log('File:', file.name, 'Size:', Math.round(file.size / 1024) + 'KB');
+
+            try {
+                showStatus('upload-status', '⏳ Uploading...', 'info');
+
+                // Create a test path
+                const timestamp = Date.now();
+                const storagePath = `test/${timestamp}_${file.name}`;
+                console.log('Upload path:', storagePath);
+
+                // Get storage reference
+                const storageRef = storage.ref(storagePath);
+                console.log('Storage reference created');
+
+                // Upload file
+                console.log('Starting upload...');
+                const uploadTask = await storageRef.put(file);
+                console.log('Upload complete!');
+
+                // Get download URL
+                const downloadURL = await uploadTask.ref.getDownloadURL();
+                console.log('Download URL:', downloadURL);
+
+                showStatus('upload-status',
+                    '✓ Upload successful!<br>' +
+                    'Path: ' + storagePath + '<br>' +
+                    'URL: <a href="' + downloadURL + '" target="_blank">' + downloadURL.substring(0, 50) + '...</a>',
+                    'success');
+
+                // Try to delete the test file
+                try {
+                    await storageRef.delete();
+                    console.log('Test file cleaned up');
+                } catch (e) {
+                    console.log('Could not delete test file:', e.message);
+                }
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                console.error('Error code:', error.code);
+                console.error('Error message:', error.message);
+
+                let errorMsg = error.message;
+                if (error.code === 'storage/unauthorized') {
+                    errorMsg = '❌ Permission Denied!<br><br>' +
+                              'Firebase Storage rules need to be updated.<br>' +
+                              'See FIREBASE_STORAGE_SETUP.md for instructions.';
+                } else if (error.code === 'storage/object-not-found') {
+                    errorMsg = '❌ Storage bucket not found!<br><br>' +
+                              'Make sure Firebase Storage is enabled in the Firebase Console.';
+                }
+
+                showStatus('upload-status', '✗ ' + errorMsg, 'error');
+            }
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            console.log('=== Firebase Storage Test Page Loaded ===');
+            testFirebaseInit();
+        });
+    </script>
+</body>
+</html>

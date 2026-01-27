@@ -17,7 +17,7 @@ const firebaseConfig = {
     authDomain: "project-review-fe0cc.firebaseapp.com",
     databaseURL: "https://project-review-fe0cc-default-rtdb.firebaseio.com",
     projectId: "project-review-fe0cc",
-    storageBucket: "project-review-fe0cc.firebasestorage.app",
+    storageBucket: "project-review-fe0cc.appspot.com",
     messagingSenderId: "496818003443",
     appId: "1:496818003443:web:8fde3dd33c3082dad70686"
 };
@@ -25,6 +25,38 @@ const firebaseConfig = {
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
+const storage = firebase.storage();
+
+// Safari ITP Detection and Warning
+function checkSafariITP() {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (isSafari) {
+        console.log('Safari detected - checking for ITP issues...');
+
+        // Check if localStorage is accessible (ITP can block this)
+        try {
+            localStorage.setItem('_test', '1');
+            localStorage.removeItem('_test');
+            console.log('✓ localStorage accessible');
+        } catch (e) {
+            console.error('✗ localStorage blocked by Safari ITP:', e);
+            return false;
+        }
+
+        // Test Firebase connectivity
+        database.ref('.info/connected').on('value', (snapshot) => {
+            if (snapshot.val() === true) {
+                console.log('✓ Firebase connected');
+            } else {
+                console.warn('✗ Firebase connection issue - may be blocked by ITP');
+            }
+        });
+    }
+    return true;
+}
+
+// Run Safari checks on load
+checkSafariITP();
 
 // Legacy JSONBin variables (kept for reference during migration, will be removed)
 const JSONBIN_BIN_ID = null;
@@ -51,49 +83,229 @@ const IMAGE_CONFIG = {
  */
 async function compressImage(file) {
     return new Promise((resolve, reject) => {
+        console.log(`Compressing image: ${file.name} (${Math.round(file.size/1024)}KB)`);
+
         const reader = new FileReader();
         reader.onload = (e) => {
             const img = new Image();
+
+            // Safari-specific: Set crossOrigin before setting src for local files
+            // This prevents tainting issues in Safari
+            img.crossOrigin = 'anonymous';
+
             img.onload = () => {
-                // Calculate new dimensions maintaining aspect ratio
-                let { width, height } = img;
+                try {
+                    // Calculate new dimensions maintaining aspect ratio
+                    let { width, height } = img;
 
-                if (width > IMAGE_CONFIG.maxWidth) {
-                    height = (height * IMAGE_CONFIG.maxWidth) / width;
-                    width = IMAGE_CONFIG.maxWidth;
+                    if (width > IMAGE_CONFIG.maxWidth) {
+                        height = (height * IMAGE_CONFIG.maxWidth) / width;
+                        width = IMAGE_CONFIG.maxWidth;
+                    }
+                    if (height > IMAGE_CONFIG.maxHeight) {
+                        width = (width * IMAGE_CONFIG.maxHeight) / height;
+                        height = IMAGE_CONFIG.maxHeight;
+                    }
+
+                    // Create canvas and draw resized image
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+                    if (!ctx) {
+                        throw new Error('Failed to get canvas context');
+                    }
+
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Convert to compressed JPEG
+                    // Safari fix: Wrap toDataURL in try-catch for security errors
+                    let compressedDataUrl;
+                    try {
+                        compressedDataUrl = canvas.toDataURL('image/jpeg', IMAGE_CONFIG.quality);
+                    } catch (canvasError) {
+                        console.error('Canvas toDataURL failed:', canvasError);
+                        throw new Error(`Canvas conversion failed: ${canvasError.message}`);
+                    }
+
+                    // Log compression results
+                    const originalSize = e.target.result.length;
+                    const compressedSize = compressedDataUrl.length;
+                    const savings = Math.round((1 - compressedSize / originalSize) * 100);
+                    console.log(`Image compressed: ${Math.round(originalSize/1024)}KB → ${Math.round(compressedSize/1024)}KB (${savings}% smaller)`);
+
+                    resolve(compressedDataUrl);
+                } catch (error) {
+                    console.error('Image compression error:', error);
+                    reject(error);
                 }
-                if (height > IMAGE_CONFIG.maxHeight) {
-                    width = (width * IMAGE_CONFIG.maxHeight) / height;
-                    height = IMAGE_CONFIG.maxHeight;
-                }
-
-                // Create canvas and draw resized image
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillRect(0, 0, width, height);
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // Convert to compressed JPEG
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', IMAGE_CONFIG.quality);
-
-                // Log compression results
-                const originalSize = e.target.result.length;
-                const compressedSize = compressedDataUrl.length;
-                const savings = Math.round((1 - compressedSize / originalSize) * 100);
-                console.log(`Image compressed: ${Math.round(originalSize/1024)}KB → ${Math.round(compressedSize/1024)}KB (${savings}% smaller)`);
-
-                resolve(compressedDataUrl);
             };
-            img.onerror = () => reject(new Error('Failed to load image'));
+
+            img.onerror = (error) => {
+                console.error('Image load error:', error);
+                reject(new Error(`Failed to load image: ${file.name}`));
+            };
+
             img.src = e.target.result;
         };
-        reader.onerror = () => reject(new Error('Failed to read file'));
+
+        reader.onerror = (error) => {
+            console.error('FileReader error:', error);
+            reject(new Error(`Failed to read file: ${file.name}`));
+        };
+
         reader.readAsDataURL(file);
     });
+}
+
+/**
+ * Compress an image file to a Blob (for Firebase Storage upload)
+ * @param {File} file - The image file to compress
+ * @returns {Promise<Blob>} - Blob of compressed image
+ */
+async function compressImageToBlob(file) {
+    return new Promise((resolve, reject) => {
+        console.log(`Compressing image to blob: ${file.name} (${Math.round(file.size/1024)}KB)`);
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+
+            // Safari-specific: Set crossOrigin before setting src for local files
+            img.crossOrigin = 'anonymous';
+
+            img.onload = () => {
+                try {
+                    // Calculate new dimensions maintaining aspect ratio
+                    let { width, height } = img;
+
+                    if (width > IMAGE_CONFIG.maxWidth) {
+                        height = (height * IMAGE_CONFIG.maxWidth) / width;
+                        width = IMAGE_CONFIG.maxWidth;
+                    }
+                    if (height > IMAGE_CONFIG.maxHeight) {
+                        width = (width * IMAGE_CONFIG.maxHeight) / height;
+                        height = IMAGE_CONFIG.maxHeight;
+                    }
+
+                    // Create canvas and draw resized image
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+                    if (!ctx) {
+                        throw new Error('Failed to get canvas context');
+                    }
+
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Convert to compressed JPEG Blob
+                    canvas.toBlob((blob) => {
+                        if (!blob) {
+                            reject(new Error('Failed to create blob from canvas'));
+                            return;
+                        }
+
+                        // Log compression results
+                        const originalSize = file.size;
+                        const compressedSize = blob.size;
+                        const savings = Math.round((1 - compressedSize / originalSize) * 100);
+                        console.log(`Image compressed to blob: ${Math.round(originalSize/1024)}KB → ${Math.round(compressedSize/1024)}KB (${savings}% smaller)`);
+
+                        resolve(blob);
+                    }, 'image/jpeg', IMAGE_CONFIG.quality);
+                } catch (error) {
+                    console.error('Image compression error:', error);
+                    reject(error);
+                }
+            };
+
+            img.onerror = (error) => {
+                console.error('Image load error:', error);
+                reject(new Error(`Failed to load image: ${file.name}`));
+            };
+
+            img.src = e.target.result;
+        };
+
+        reader.onerror = (error) => {
+            console.error('FileReader error:', error);
+            reject(new Error(`Failed to read file: ${file.name}`));
+        };
+
+        reader.readAsDataURL(file);
+    });
+}
+
+/**
+ * Upload an image blob to Firebase Storage
+ * @param {Blob} blob - The image blob to upload
+ * @param {string} projectName - The project name (used for folder organization)
+ * @param {string} imageName - The unique image filename
+ * @returns {Promise<string>} - Download URL of the uploaded image
+ */
+async function uploadImageToStorage(blob, projectName, imageName) {
+    try {
+        console.log(`📤 Uploading image to Firebase Storage: ${imageName}`);
+        console.log(`Blob size: ${Math.round(blob.size / 1024)}KB`);
+
+        // Check if storage is initialized
+        if (!storage) {
+            throw new Error('Firebase Storage not initialized');
+        }
+
+        // Create storage path: projects/{sanitizedProjectName}/images/{imageName}.jpg
+        const sanitizedName = sanitizeFirebaseKey(projectName);
+        const storagePath = `projects/${sanitizedName}/images/${imageName}.jpg`;
+        console.log(`Storage path: ${storagePath}`);
+
+        // Create reference and upload
+        const storageRef = storage.ref(storagePath);
+
+        // Add metadata
+        const metadata = {
+            contentType: 'image/jpeg',
+            customMetadata: {
+                projectName: projectName,
+                uploadedAt: new Date().toISOString()
+            }
+        };
+
+        console.log('Starting upload...');
+        // Upload blob
+        const uploadTask = await storageRef.put(blob, metadata);
+        console.log('Upload complete, getting download URL...');
+
+        // Get download URL
+        const downloadURL = await uploadTask.ref.getDownloadURL();
+
+        console.log(`✓ Image uploaded successfully!`);
+        console.log(`Download URL: ${downloadURL}`);
+        return downloadURL;
+    } catch (error) {
+        console.error('=== STORAGE UPLOAD ERROR ===');
+        console.error('Error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+
+        // Provide helpful error messages
+        if (error.code === 'storage/unauthorized') {
+            throw new Error('Firebase Storage permission denied. Please check Storage security rules.');
+        } else if (error.code === 'storage/unauthenticated') {
+            throw new Error('Firebase Storage requires authentication. Please enable anonymous auth.');
+        } else if (error.code === 'storage/retry-limit-exceeded') {
+            throw new Error('Upload failed after multiple retries. Check your internet connection.');
+        } else {
+            throw new Error(`Failed to upload image: ${error.message || error.code || 'Unknown error'}`);
+        }
+    }
 }
 
 /**
@@ -119,6 +331,8 @@ async function compressImages(files) {
 // Make compression functions globally available
 window.compressImage = compressImage;
 window.compressImages = compressImages;
+window.compressImageToBlob = compressImageToBlob;
+window.uploadImageToStorage = uploadImageToStorage;
 window.IMAGE_CONFIG = IMAGE_CONFIG;
 
 // ==========================================
@@ -385,12 +599,79 @@ function setupProjectForm() {
                 _lastModified: now
             };
 
-            // Convert and compress images for storage
+            // Upload images - try Firebase Storage, fallback to base64 if it fails
             const files = window.getUploadedFiles ? window.getUploadedFiles() : [];
-            console.log('Compressing', files.length, 'images...');
-            data.images = await compressImages(files);
-            console.log('Compression complete:', data.images.length, 'images ready');
-            data.attachments = files.map(f => f.name).join(', ');
+            if (files.length > 0) {
+                // Limit to 5 images on initial submission to avoid issues
+                const filesToProcess = files.slice(0, 5);
+                if (files.length > 5) {
+                    alert(`Only the first 5 images will be uploaded. You can add more in the workspace.`);
+                }
+
+                console.log('Processing', filesToProcess.length, 'images...');
+
+                try {
+                    const imageMetadata = [];
+                    let storageWorking = true;
+
+                    for (let i = 0; i < filesToProcess.length; i++) {
+                        const file = filesToProcess[i];
+                        console.log(`Processing image ${i + 1}/${filesToProcess.length}: ${file.name}`);
+
+                        if (storageWorking) {
+                            try {
+                                // Try Storage first
+                                const blob = await compressImageToBlob(file);
+                                const timestamp = Date.now();
+                                const random = Math.random().toString(36).substring(2, 8);
+                                const imageName = `${timestamp}_${random}`;
+                                const url = await uploadImageToStorage(blob, data.projectName, imageName);
+
+                                imageMetadata.push({
+                                    url: url,
+                                    note: '',
+                                    uploadedAt: new Date().toISOString(),
+                                    filename: file.name
+                                });
+                                console.log(`✓ Uploaded ${file.name} to Storage`);
+                            } catch (storageError) {
+                                console.warn('Storage failed, switching to base64 fallback for remaining images');
+                                storageWorking = false;
+                                // Process this image as base64
+                                const base64 = await compressImage(file);
+                                imageMetadata.push({
+                                    src: base64,
+                                    note: '',
+                                    uploadedAt: new Date().toISOString(),
+                                    filename: file.name
+                                });
+                                console.log(`✓ Saved ${file.name} as base64`);
+                            }
+                        } else {
+                            // Use base64 for remaining images
+                            const base64 = await compressImage(file);
+                            imageMetadata.push({
+                                src: base64,
+                                note: '',
+                                uploadedAt: new Date().toISOString(),
+                                filename: file.name
+                            });
+                            console.log(`✓ Saved ${file.name} as base64`);
+                        }
+                    }
+
+                    data.images = imageMetadata;
+                    console.log('✓ All images processed successfully');
+                    data.attachments = filesToProcess.map(f => f.name).join(', ');
+
+                } catch (error) {
+                    console.error('Image processing failed:', error);
+                    throw new Error(`Image processing failed: ${error.message}`);
+                }
+            } else {
+                data.images = [];
+                data.attachments = '';
+            }
 
             // Debug: Log images being saved
             console.log('Files to upload:', files.length);
@@ -403,8 +684,20 @@ function setupProjectForm() {
             document.getElementById('successMessage').hidden = false;
 
         } catch (error) {
-            console.error('Submission error:', error);
-            alert('There was an error submitting your project. Please try again.');
+            console.error('=== SUBMISSION ERROR ===');
+            console.error('Error:', error);
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            console.error('Error code:', error.code);
+            console.error('Full error object:', JSON.stringify(error, null, 2));
+
+            // Show detailed error to user
+            let errorMsg = error.message || 'Unknown error';
+            if (error.code) {
+                errorMsg = `${error.code}: ${errorMsg}`;
+            }
+            alert(`Error submitting project:\n\n${errorMsg}\n\nSee console for details (F12)`);
 
             btnText.hidden = false;
             btnLoading.hidden = true;
@@ -479,17 +772,10 @@ async function submitToStorage(data) {
         data.id = generateId();
     }
 
-    // Always save locally first
-    const stored = JSON.parse(localStorage.getItem('projectReviewData') || '[]');
-    console.log('Existing data in localStorage:', stored.length, 'items');
-
-    stored.push(data);
-    localStorage.setItem('projectReviewData', JSON.stringify(stored));
-
-    console.log('Data saved! Total items now:', stored.length);
-
-    // Sync to Firebase
+    // Save ONLY to Firebase - no localStorage to avoid quota issues
+    console.log('Saving to Firebase...');
     await syncToFirebase(data);
+    console.log('✓ Successfully saved to Firebase!');
 }
 
 // Generate a unique ID
@@ -500,6 +786,7 @@ function generateId() {
 // Sync a single item to Firebase
 async function syncToFirebase(data) {
     try {
+        console.log('Starting Firebase sync...');
         const itemType = data.type === 'project' ? 'projects' : 'feedback';
         const itemId = data.id || generateId();
 
@@ -508,15 +795,20 @@ async function syncToFirebase(data) {
             ? sanitizeFirebaseKey(data.projectName)
             : itemId;
 
+        console.log('Firebase path:', `${itemType}/${key}`);
+        console.log('Data size:', JSON.stringify(data).length, 'characters');
+
         await database.ref(`${itemType}/${key}`).set({
             ...data,
             id: itemId,
             _lastModified: new Date().toISOString()
         });
 
-        console.log(`Synced ${data.type} to Firebase:`, key);
+        console.log(`✓ Synced ${data.type} to Firebase:`, key);
     } catch (error) {
         console.error('Firebase sync error:', error);
+        console.error('Error details:', error.name, error.message);
+        throw new Error(`Firebase sync failed: ${error.message}`);
     }
 }
 
@@ -580,13 +872,10 @@ async function syncFromFirebase() {
         const projects = data.projects ? Object.values(data.projects).filter(p => !p._deletedAt) : [];
         const feedback = data.feedback ? Object.values(data.feedback).filter(f => !f._deletedAt) : [];
 
-        console.log('Firebase has', projects.length, 'projects,', feedback.length, 'feedback');
+        console.log('✓ Fetched from Firebase:', projects.length, 'projects,', feedback.length, 'feedback');
 
-        // Replace local data with Firebase data
-        const combined = [...projects, ...feedback];
-        localStorage.setItem('projectReviewData', JSON.stringify(combined));
-        console.log('Synced from Firebase, total items:', combined.length);
-
+        // Don't save to localStorage - just return the data
+        // Firebase is the source of truth, we fetch directly each time
         return { projects, feedback };
     } catch (error) {
         console.error('Firebase fetch error:', error);
@@ -648,18 +937,21 @@ function cleanupDuplicates() {
 // Initialize
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('=== App Initializing ===');
+
     // FIREBASE IS SOURCE OF TRUTH - fetch latest on page load
     console.log('Fetching latest data from Firebase...');
     try {
         await syncFromFirebase();
-        console.log('Synced from Firebase successfully');
+        console.log('✓ Synced from Firebase successfully');
     } catch (err) {
-        console.log('Firebase sync failed:', err);
+        console.error('✗ Firebase sync failed:', err);
     }
 
-    cleanupDuplicates();
     setupProjectForm();
     setupFeedbackForm();
+
+    console.log('=== App Ready ===');
 });
 
 // Helper: Clear all local data and resync from Firebase (for debugging sync issues)
