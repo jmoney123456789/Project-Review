@@ -3,21 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Review</title>
+    <title>Kram - New Project</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <header class="unified-header">
-        <div class="header-brand">
-            <div class="header-brand-icon"><span></span></div>
-            <span class="header-brand-text">PROJECT</span>
-        </div>
+        <a href="workspace.html" class="header-brand">
+            <svg class="header-brand-svg" width="28" height="28" viewBox="0 0 28 28" fill="none">
+                <rect x="2" y="4" width="20" height="22" rx="2" fill="currentColor" opacity="0.15" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="6" y="2" width="20" height="22" rx="2" fill="#0C0C0C" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="10" y1="9" x2="22" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+                <line x1="10" y1="13.5" x2="19" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+                <line x1="10" y1="18" x2="16" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.2"/>
+            </svg>
+            <span class="header-brand-text">KRAM</span>
+        </a>
         <nav class="header-nav">
-            <a href="index.html" class="header-link active">+ New Project</a>
+            <a href="index.html" class="header-link active">+ New</a>
             <a href="workspace.html" class="header-link">Workspace</a>
-            <a href="dashboard.html" class="header-link">Dashboard</a>
         </nav>
+        <div class="header-actions">
+            <a href="workspace.html" class="header-cmd-k" title="Open Workspace (Ctrl+K)">
+                <span class="cmd-k-label">Search...</span>
+                <kbd class="cmd-k-shortcut">Ctrl K</kbd>
+            </a>
+        </div>
     </header>
 
     <main class="container container-full">

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Review - Workspace</title>
+    <title>Kram - Workspace</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="workspace.css">
@@ -11,68 +11,173 @@
 <body class="workspace-body">
     <!-- Top Bar -->
     <header class="unified-header workspace-header">
-        <div class="header-brand">
-            <div class="header-brand-icon"><span></span></div>
-            <span class="header-brand-text">PROJECT</span>
-        </div>
+        <a href="workspace.html" class="header-brand">
+            <svg class="header-brand-svg" width="28" height="28" viewBox="0 0 28 28" fill="none">
+                <rect x="2" y="4" width="20" height="22" rx="2" fill="currentColor" opacity="0.15" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="6" y="2" width="20" height="22" rx="2" fill="#0C0C0C" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="10" y1="9" x2="22" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+                <line x1="10" y1="13.5" x2="19" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+                <line x1="10" y1="18" x2="16" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.2"/>
+            </svg>
+            <span class="header-brand-text">KRAM</span>
+        </a>
         <nav class="header-nav">
-            <a href="index.html" class="header-link">+ New Project</a>
+            <a href="index.html" class="header-link">+ New</a>
             <a href="workspace.html" class="header-link active">Workspace</a>
-            <a href="dashboard.html" class="header-link">Dashboard</a>
         </nav>
+        <div class="header-actions">
+            <button class="header-cmd-k" id="cmdKBtn" title="Command Palette (Ctrl+K)">
+                <span class="cmd-k-label">Search...</span>
+                <kbd class="cmd-k-shortcut">Ctrl K</kbd>
+            </button>
+        </div>
     </header>
 
     <div class="workspace-container">
-        <!-- Left Sidebar: Project List -->
-        <aside class="sidebar-left">
-            <div class="sidebar-header">
-                <h2>Projects</h2>
-                <button class="btn-icon" id="refreshProjects" title="Refresh">&#8635;</button>
+        <!-- Activity Bar (48px icon rail) -->
+        <nav class="activity-bar" id="activityBar">
+            <button class="activity-bar-icon active" data-panel="projects" title="Projects (Ctrl+1)">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="14" height="14" rx="2"/>
+                    <line x1="7" y1="7" x2="13" y2="7"/>
+                    <line x1="7" y1="10" x2="13" y2="10"/>
+                    <line x1="7" y1="13" x2="10" y2="13"/>
+                </svg>
+            </button>
+            <button class="activity-bar-icon" data-panel="tasks" title="Tasks (Ctrl+2)">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="14" height="14" rx="2"/>
+                    <polyline points="7 10 9 12 13 8"/>
+                </svg>
+            </button>
+            <button class="activity-bar-icon" data-panel="files" title="Files (Ctrl+3)">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 5C3 3.89543 3.89543 3 5 3H8L10 5H15C16.1046 5 17 5.89543 17 7V15C17 16.1046 16.1046 17 15 17H5C3.89543 17 3 16.1046 3 15V5Z"/>
+                </svg>
+            </button>
+        </nav>
+
+        <!-- Side Panel (220px, toggleable) -->
+        <aside class="side-panel" id="sidePanel">
+            <!-- Projects Panel -->
+            <div class="panel-content" id="panelProjects">
+                <div class="sidebar-header">
+                    <h2>Projects</h2>
+                    <button class="btn-icon" id="refreshProjects" title="Refresh">&#8635;</button>
+                </div>
+                <!-- Filter Controls -->
+                <div class="sidebar-filters">
+                    <div class="filter-row">
+                        <div class="filter-group filter-group-half">
+                            <label for="statusFilter">Status</label>
+                            <select id="statusFilter" onchange="setStatusFilter(this.value)">
+                                <option value="all">All Status</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="completed">Completed</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                        </div>
+                        <div class="filter-group filter-group-half">
+                            <label for="sortSelect">Sort By</label>
+                            <select id="sortSelect" onchange="setSortOption(this.value)">
+                                <option value="date_desc">Newest First</option>
+                                <option value="date_asc">Oldest First</option>
+                                <option value="name_asc">Name A-Z</option>
+                                <option value="name_desc">Name Z-A</option>
+                                <option value="edited_desc">Recently Edited</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="filter-row">
+                        <div class="filter-group filter-group-half">
+                            <label for="viewSelect">View</label>
+                            <select id="viewSelect" onchange="setViewStyle(this.value)">
+                                <option value="card">Card</option>
+                                <option value="list">List</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="filter-group" id="tagFiltersContainer">
+                        <label>Tags</label>
+                        <div class="tag-filters" id="tagFilters">
+                            <!-- Tag filter buttons loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+                <div class="project-list-sidebar" id="projectListSidebar">
+                    <!-- Projects loaded dynamically -->
+                    <div class="sidebar-empty">
+                        <p>No projects yet</p>
+                        <a href="index.html">Create one</a>
+                    </div>
+                </div>
             </div>
-            <!-- Filter Controls -->
-            <div class="sidebar-filters">
-                <div class="filter-row">
-                    <div class="filter-group filter-group-half">
-                        <label for="statusFilter">Status</label>
-                        <select id="statusFilter" onchange="setStatusFilter(this.value)">
-                            <option value="all">All Status</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="completed">Completed</option>
-                            <option value="archived">Archived</option>
-                        </select>
-                    </div>
-                    <div class="filter-group filter-group-half">
-                        <label for="sortSelect">Sort By</label>
-                        <select id="sortSelect" onchange="setSortOption(this.value)">
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
-                            <option value="name_asc">Name A-Z</option>
-                            <option value="name_desc">Name Z-A</option>
-                            <option value="edited_desc">Recently Edited</option>
-                        </select>
-                    </div>
+
+            <!-- Tasks Panel -->
+            <div class="panel-content" id="panelTasks" hidden>
+                <div class="sidebar-header">
+                    <h2>Tasks</h2>
                 </div>
-                <div class="filter-row">
-                    <div class="filter-group filter-group-half">
-                        <label for="viewSelect">View</label>
-                        <select id="viewSelect" onchange="setViewStyle(this.value)">
-                            <option value="card">Card</option>
-                            <option value="list">List</option>
-                        </select>
-                    </div>
+
+                <!-- No project selected state -->
+                <div class="todo-empty" id="todoEmpty">
+                    <p>Select a project to see tasks</p>
                 </div>
-                <div class="filter-group" id="tagFiltersContainer">
-                    <label>Tags</label>
-                    <div class="tag-filters" id="tagFilters">
-                        <!-- Tag filter buttons loaded dynamically -->
+
+                <!-- To-do list for selected project -->
+                <div class="todo-container" id="todoContainer" hidden>
+                    <div class="todo-project-name" id="todoProjectName">Project Name</div>
+
+                    <!-- Add Task Form -->
+                    <div class="todo-add-form">
+                        <input type="text" id="newTaskInput" placeholder="Add a task...">
+                        <select id="newTaskAssignee">
+                            <option value="Jason">Jason</option>
+                            <option value="Ash">Ash</option>
+                        </select>
+                        <button id="addTaskBtn">+</button>
                     </div>
+
+                    <!-- Task List -->
+                    <div class="todo-list" id="todoList">
+                        <!-- Tasks loaded dynamically -->
+                    </div>
+
+                    <!-- Changes Log -->
+                    <details class="changes-log-section">
+                        <summary class="changes-log-header">
+                            <span>Changes Log</span>
+                            <span class="changes-count" id="changesCount">0</span>
+                        </summary>
+                        <div class="changes-log-list" id="changesLogList">
+                            <!-- Changes loaded dynamically -->
+                            <div class="changes-empty">No changes yet</div>
+                        </div>
+                    </details>
                 </div>
             </div>
-            <div class="project-list-sidebar" id="projectListSidebar">
-                <!-- Projects loaded dynamically -->
-                <div class="sidebar-empty">
-                    <p>No projects yet</p>
-                    <a href="index.html">Create one</a>
+
+            <!-- Files Panel -->
+            <div class="panel-content" id="panelFiles" hidden>
+                <div class="sidebar-header">
+                    <h2>Files</h2>
+                </div>
+                <div class="panel-files-container" id="panelFilesContainer">
+                    <div class="panel-files-no-project" id="panelFilesNoProject">
+                        <p>Select a project to see files</p>
+                    </div>
+                    <div class="panel-files-content" id="panelFilesContent" hidden>
+                        <div class="panel-files-project-name" id="panelFilesProjectName">Project Name</div>
+                        <div class="panel-files-actions">
+                            <button class="files-create-btn" id="panelCreateFileBtn" title="Create new .txt file">+ Create</button>
+                            <input type="file" id="panelFileInput" accept=".txt" hidden>
+                            <button class="files-upload-btn" id="panelUploadFileBtn" title="Upload .txt file">+ Upload</button>
+                        </div>
+                        <div class="panel-files-list" id="panelFilesList">
+                            <!-- Files loaded dynamically -->
+                            <div class="files-empty">No files uploaded</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -116,7 +221,7 @@
                     </div>
                     <button class="progress-tabs-add" id="addProgressTabBtn" title="Add progress tab">+</button>
 
-                    <!-- Files Button & Dropdown -->
+                    <!-- Files Button & Dropdown (kept here for quick access) -->
                     <div class="files-dropdown-container" id="filesDropdownContainer">
                         <button class="files-btn" id="filesBtn" title="Project files">
                             <span class="files-btn-icon">&#128196;</span>
@@ -294,50 +399,6 @@
                 </div>
             </div>
         </main>
-
-        <!-- Right Sidebar: To-Do List -->
-        <aside class="sidebar-right">
-            <div class="sidebar-header">
-                <h2>Tasks</h2>
-            </div>
-
-            <!-- No project selected state -->
-            <div class="todo-empty" id="todoEmpty">
-                <p>Select a project to see tasks</p>
-            </div>
-
-            <!-- To-do list for selected project -->
-            <div class="todo-container" id="todoContainer" hidden>
-                <div class="todo-project-name" id="todoProjectName">Project Name</div>
-
-                <!-- Add Task Form -->
-                <div class="todo-add-form">
-                    <input type="text" id="newTaskInput" placeholder="Add a task...">
-                    <select id="newTaskAssignee">
-                        <option value="Jason">Jason</option>
-                        <option value="Ash">Ash</option>
-                    </select>
-                    <button id="addTaskBtn">+</button>
-                </div>
-
-                <!-- Task List -->
-                <div class="todo-list" id="todoList">
-                    <!-- Tasks loaded dynamically -->
-                </div>
-
-                <!-- Changes Log -->
-                <details class="changes-log-section">
-                    <summary class="changes-log-header">
-                        <span>Changes Log</span>
-                        <span class="changes-count" id="changesCount">0</span>
-                    </summary>
-                    <div class="changes-log-list" id="changesLogList">
-                        <!-- Changes loaded dynamically -->
-                        <div class="changes-empty">No changes yet</div>
-                    </div>
-                </details>
-            </div>
-        </aside>
     </div>
 
     <!-- Mobile Tab Navigation -->
@@ -355,6 +416,15 @@
             <span>Tasks</span>
         </button>
     </nav>
+
+    <!-- Command Palette -->
+    <div class="command-palette" id="commandPalette" hidden>
+        <div class="command-backdrop" id="commandBackdrop"></div>
+        <div class="command-dialog">
+            <input type="text" id="commandInput" placeholder="Search projects, actions..." autocomplete="off">
+            <div class="command-results" id="commandResults"></div>
+        </div>
+    </div>
 
     <!-- Delete Confirmation Modal -->
     <div class="modal" id="deleteModal" hidden>

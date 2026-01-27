@@ -44,6 +44,11 @@ let tagFilters = []; // Array of selected tags
 let sortOption = 'date_desc'; // 'date_desc', 'date_asc', 'name_asc', 'name_desc', 'edited_desc'
 let viewStyle = 'card'; // 'card' or 'list'
 
+// Activity Bar panel state
+let activePanel = 'projects';
+let panelOpen = true;
+let commandPaletteSelectedIndex = 0;
+
 // Firebase real-time listeners
 let projectsListener = null;
 let feedbackListener = null;
@@ -154,10 +159,258 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     setupDeleteModal();
     setupFirebaseListeners(); // Real-time sync - no refresh needed!
+    setupActivityBar(); // Activity bar panel toggling
+    setupCommandPalette(); // Cmd+K command palette
     setupMobileNav(); // Mobile navigation
 
     console.log('=== Workspace Ready ===');
 });
+
+// ==========================================
+// Activity Bar & Panel Toggling
+// ==========================================
+
+function setupActivityBar() {
+    const icons = document.querySelectorAll('.activity-bar-icon');
+    icons.forEach(icon => {
+        icon.addEventListener('click', () => {
+            const panelName = icon.dataset.panel;
+            if (panelName) togglePanel(panelName);
+        });
+    });
+
+    // Keyboard shortcuts for panels
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            if (e.key === '1') { e.preventDefault(); togglePanel('projects'); }
+            if (e.key === '2') { e.preventDefault(); togglePanel('tasks'); }
+            if (e.key === '3') { e.preventDefault(); togglePanel('files'); }
+            if (e.key === 'k') { e.preventDefault(); openCommandPalette(); }
+        }
+    });
+}
+
+function togglePanel(panelName) {
+    const sidePanel = document.getElementById('sidePanel');
+    const container = document.querySelector('.workspace-container');
+    const icons = document.querySelectorAll('.activity-bar-icon');
+
+    if (!sidePanel || !container) return;
+
+    if (activePanel === panelName && panelOpen) {
+        // Collapse panel
+        panelOpen = false;
+        sidePanel.classList.add('collapsed');
+        container.classList.add('panel-collapsed');
+        icons.forEach(i => i.classList.remove('active'));
+    } else {
+        // Open/switch panel
+        panelOpen = true;
+        activePanel = panelName;
+        sidePanel.classList.remove('collapsed');
+        container.classList.remove('panel-collapsed');
+
+        // Show correct panel content
+        document.querySelectorAll('.panel-content').forEach(p => p.hidden = true);
+        const targetPanel = document.getElementById('panel' + panelName.charAt(0).toUpperCase() + panelName.slice(1));
+        if (targetPanel) targetPanel.hidden = false;
+
+        // Update icon states
+        icons.forEach(i => {
+            i.classList.toggle('active', i.dataset.panel === panelName);
+        });
+
+        // Update files panel content when switching to files
+        if (panelName === 'files') {
+            updateFilesPanelContent();
+        }
+    }
+}
+
+function updateFilesPanelContent() {
+    const noProject = document.getElementById('panelFilesNoProject');
+    const filesContent = document.getElementById('panelFilesContent');
+    const projectNameEl = document.getElementById('panelFilesProjectName');
+    const filesList = document.getElementById('panelFilesList');
+
+    if (!noProject || !filesContent) return;
+
+    if (!currentProject) {
+        noProject.hidden = false;
+        filesContent.hidden = true;
+        return;
+    }
+
+    noProject.hidden = true;
+    filesContent.hidden = false;
+    if (projectNameEl) projectNameEl.textContent = currentProject.projectName;
+
+    // Render files list using the same data as the dropdown
+    const files = getProjectFiles();
+    if (filesList) {
+        if (files.length === 0) {
+            filesList.innerHTML = '<div class="files-empty">No files uploaded</div>';
+        } else {
+            filesList.innerHTML = files.map(file => `
+                <div class="file-item" data-file-id="${file.id}">
+                    <div class="file-item-info" data-file-id="${file.id}">
+                        <span class="file-icon">&#128196;</span>
+                        <span class="file-name">${escapeHtml(file.fileName)}</span>
+                    </div>
+                    <button class="file-delete-btn" data-file-id="${file.id}" title="Delete file">&times;</button>
+                </div>
+            `).join('');
+
+            // Add click listeners for viewing files
+            filesList.querySelectorAll('.file-item-info').forEach(item => {
+                item.addEventListener('click', () => {
+                    openFileViewer(item.dataset.fileId);
+                });
+            });
+
+            // Add click listeners for delete buttons
+            filesList.querySelectorAll('.file-delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showDeleteFileModal(btn.dataset.fileId);
+                });
+            });
+        }
+    }
+}
+
+// ==========================================
+// Command Palette
+// ==========================================
+
+function setupCommandPalette() {
+    const cmdKBtn = document.getElementById('cmdKBtn');
+    const backdrop = document.getElementById('commandBackdrop');
+    const input = document.getElementById('commandInput');
+
+    if (cmdKBtn) {
+        cmdKBtn.addEventListener('click', openCommandPalette);
+    }
+
+    if (backdrop) {
+        backdrop.addEventListener('click', closeCommandPalette);
+    }
+
+    if (input) {
+        input.addEventListener('input', () => {
+            populateCommandResults(input.value);
+            commandPaletteSelectedIndex = 0;
+            updateCommandSelection();
+        });
+
+        input.addEventListener('keydown', (e) => {
+            const items = document.querySelectorAll('.command-item');
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeCommandPalette();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                commandPaletteSelectedIndex = Math.min(commandPaletteSelectedIndex + 1, items.length - 1);
+                updateCommandSelection();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                commandPaletteSelectedIndex = Math.max(commandPaletteSelectedIndex - 1, 0);
+                updateCommandSelection();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const selected = items[commandPaletteSelectedIndex];
+                if (selected) selected.click();
+            }
+        });
+    }
+}
+
+function openCommandPalette() {
+    const palette = document.getElementById('commandPalette');
+    const input = document.getElementById('commandInput');
+    if (!palette || !input) return;
+
+    palette.hidden = false;
+    input.value = '';
+    input.focus();
+    commandPaletteSelectedIndex = 0;
+    populateCommandResults('');
+}
+
+function closeCommandPalette() {
+    const palette = document.getElementById('commandPalette');
+    if (palette) palette.hidden = true;
+}
+
+function populateCommandResults(query) {
+    const results = document.getElementById('commandResults');
+    if (!results) return;
+
+    const items = [];
+    const q = query.toLowerCase().trim();
+
+    // Action items
+    const actions = [
+        { icon: '+', label: 'New Project', hint: '', action: () => { window.location.href = 'index.html'; } },
+        { icon: '\u{1F4CB}', label: 'Toggle Projects Panel', hint: 'Ctrl+1', action: () => { closeCommandPalette(); togglePanel('projects'); } },
+        { icon: '\u2705', label: 'Toggle Tasks Panel', hint: 'Ctrl+2', action: () => { closeCommandPalette(); togglePanel('tasks'); } },
+        { icon: '\u{1F4C1}', label: 'Toggle Files Panel', hint: 'Ctrl+3', action: () => { closeCommandPalette(); togglePanel('files'); } },
+    ];
+
+    // Add project items
+    const activeProjects = allProjects.filter(p => !p._deletedAt);
+    activeProjects.forEach(project => {
+        items.push({
+            icon: '\u{1F4C4}',
+            label: project.projectName,
+            hint: project.projectType || '',
+            action: () => {
+                closeCommandPalette();
+                selectProject(project);
+            }
+        });
+    });
+
+    // Add actions
+    actions.forEach(a => items.push(a));
+
+    // Filter by query
+    const filtered = q ? items.filter(item => item.label.toLowerCase().includes(q)) : items;
+
+    if (filtered.length === 0) {
+        results.innerHTML = '<div class="command-empty">No results found</div>';
+        return;
+    }
+
+    results.innerHTML = filtered.map((item, index) => `
+        <div class="command-item${index === 0 ? ' selected' : ''}" data-index="${index}">
+            <span class="command-item-icon">${item.icon}</span>
+            <span class="command-item-label">${escapeHtml(item.label)}</span>
+            ${item.hint ? `<span class="command-item-hint">${escapeHtml(item.hint)}</span>` : ''}
+        </div>
+    `).join('');
+
+    // Attach click handlers
+    const resultItems = results.querySelectorAll('.command-item');
+    resultItems.forEach((el, index) => {
+        el.addEventListener('click', () => {
+            filtered[index].action();
+        });
+    });
+}
+
+function updateCommandSelection() {
+    const items = document.querySelectorAll('.command-item');
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === commandPaletteSelectedIndex);
+    });
+
+    // Scroll selected into view
+    const selected = items[commandPaletteSelectedIndex];
+    if (selected) {
+        selected.scrollIntoView({ block: 'nearest' });
+    }
+}
 
 // ==========================================
 // Mobile Navigation
@@ -184,9 +437,8 @@ function setupMobileNav() {
             switchMobileTab(currentMobileTab);
         } else if (!nowMobile && wasIsMobile) {
             // Switched TO desktop - remove all mobile classes
-            document.querySelector('.sidebar-left')?.classList.remove('mobile-active');
-            document.querySelector('.sidebar-right')?.classList.remove('mobile-active');
             document.querySelector('.main-content')?.classList.remove('mobile-active');
+            document.getElementById('sidePanel')?.classList.remove('mobile-active');
         }
 
         wasIsMobile = nowMobile;
@@ -196,38 +448,48 @@ function setupMobileNav() {
 function switchMobileTab(tab) {
     currentMobileTab = tab;
 
-    const sidebarLeft = document.querySelector('.sidebar-left');
-    const sidebarRight = document.querySelector('.sidebar-right');
+    const sidePanel = document.getElementById('sidePanel');
     const mainContent = document.querySelector('.main-content');
     const tabs = document.querySelectorAll('.mobile-tab');
 
-    if (!sidebarLeft || !sidebarRight || !mainContent) {
-        console.error('Mobile nav: Could not find required elements');
+    if (!mainContent) {
+        console.error('Mobile nav: Could not find main-content element');
         return;
     }
 
     // Remove all active states
-    sidebarLeft.classList.remove('mobile-active');
-    sidebarRight.classList.remove('mobile-active');
     mainContent.classList.remove('mobile-active');
+    if (sidePanel) sidePanel.classList.remove('mobile-active');
     tabs.forEach(t => t.classList.remove('active'));
 
     // Activate selected tab
-    const activeTab = document.querySelector(`.mobile-tab[data-tab="${tab}"]`);
-    if (activeTab) {
-        activeTab.classList.add('active');
+    const activeTabEl = document.querySelector(`.mobile-tab[data-tab="${tab}"]`);
+    if (activeTabEl) {
+        activeTabEl.classList.add('active');
     }
 
     // Show the selected panel
     switch (tab) {
         case 'projects':
-            sidebarLeft.classList.add('mobile-active');
+            if (sidePanel) {
+                sidePanel.classList.add('mobile-active');
+                // Show projects panel content
+                document.querySelectorAll('.panel-content').forEach(p => p.hidden = true);
+                const projectsPanel = document.getElementById('panelProjects');
+                if (projectsPanel) projectsPanel.hidden = false;
+            }
             break;
         case 'main':
             mainContent.classList.add('mobile-active');
             break;
         case 'tasks':
-            sidebarRight.classList.add('mobile-active');
+            if (sidePanel) {
+                sidePanel.classList.add('mobile-active');
+                // Show tasks panel content
+                document.querySelectorAll('.panel-content').forEach(p => p.hidden = true);
+                const tasksPanel = document.getElementById('panelTasks');
+                if (tasksPanel) tasksPanel.hidden = false;
+            }
             break;
     }
 
@@ -532,9 +794,10 @@ function setupFirebaseListeners() {
 
         console.log('Real-time update: Project files changed, now have', Object.keys(allProjectFiles).length, 'file sets');
 
-        // Update files dropdown if viewing a project and dropdown is open
+        // Update files dropdown and panel if viewing a project
         if (currentProject) {
             renderFilesDropdown();
+            updateFilesPanelContent();
         }
     });
 
@@ -980,8 +1243,24 @@ function setupEventListeners() {
     });
     document.getElementById('galleryFileInput')?.addEventListener('change', handleGalleryUpload);
 
+    // Panel files event listeners
+    document.getElementById('panelUploadFileBtn')?.addEventListener('click', () => {
+        document.getElementById('panelFileInput')?.click();
+    });
+    document.getElementById('panelFileInput')?.addEventListener('change', handleProjectFileUpload);
+    document.getElementById('panelCreateFileBtn')?.addEventListener('click', showCreateFileModal);
+
     // Keyboard navigation for gallery
     document.addEventListener('keydown', (e) => {
+        // Handle ESC for command palette first
+        if (e.key === 'Escape') {
+            const commandPalette = document.getElementById('commandPalette');
+            if (commandPalette && !commandPalette.hidden) {
+                closeCommandPalette();
+                return;
+            }
+        }
+
         if (!currentProject) return;
 
         // Handle ESC for modals
@@ -1453,6 +1732,9 @@ function selectProject(project) {
 
     // Load changes log
     renderChangesLog();
+
+    // Update files panel content (for the Activity Bar files panel)
+    updateFilesPanelContent();
 }
 
 // ==========================================
@@ -2942,8 +3224,9 @@ async function handleProjectFileUpload(e) {
         const user = getCurrentUser();
         logChange(currentProject.projectName, user, 'created', `Uploaded file "${file.name}"`);
 
-        // Refresh dropdown
+        // Refresh dropdown and panel
         renderFilesDropdown();
+        updateFilesPanelContent();
 
         console.log('File uploaded:', file.name);
 
@@ -3091,8 +3374,9 @@ async function confirmDeleteFile() {
     const user = getCurrentUser();
     logChange(currentProject.projectName, user, 'deleted', `Deleted file "${deletedFile.fileName}"`);
 
-    // Refresh dropdown
+    // Refresh dropdown and panel
     renderFilesDropdown();
+    updateFilesPanelContent();
 
     // Hide modal
     hideDeleteFileModal();
@@ -3214,8 +3498,9 @@ async function saveCreatedFile() {
         const user = getCurrentUser();
         logChange(currentProject.projectName, user, 'created', `Created file "${fullFileName}"`);
 
-        // Refresh dropdown
+        // Refresh dropdown and panel
         renderFilesDropdown();
+        updateFilesPanelContent();
 
         // Hide modal
         hideCreateFileModal();

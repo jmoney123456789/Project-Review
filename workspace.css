@@ -1,5 +1,5 @@
 /* ==========================================
-   WORKSPACE - 3-Panel Terminal Layout
+   WORKSPACE - Activity Bar Layout
    ========================================== */
 
 /* Body Override */
@@ -43,25 +43,100 @@
 /* Workspace Container */
 .workspace-container {
     display: grid;
-    grid-template-columns: 240px 1fr 280px;
+    grid-template-columns: 48px 260px 1fr;
     flex: 1;
     overflow: hidden;
 }
 
-/* Sidebars */
-.sidebar-left,
-.sidebar-right {
+/* When side panel is collapsed */
+.workspace-container.panel-collapsed {
+    grid-template-columns: 48px 0px 1fr;
+}
+
+/* ==========================================
+   ACTIVITY BAR (48px icon rail)
+   ========================================== */
+
+.activity-bar {
+    width: 48px;
     background: var(--black-light);
     border-right: 1px solid var(--glass-border);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    align-items: center;
+    padding-top: 0.5rem;
+    gap: 0.25rem;
+    flex-shrink: 0;
 }
 
-.sidebar-right {
-    border-right: none;
-    border-left: 1px solid var(--glass-border);
+.activity-bar-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    color: var(--grey-mid);
+    cursor: pointer;
+    transition: color 0.15s ease;
+    position: relative;
+    padding: 0;
 }
+
+.activity-bar-icon:hover {
+    color: var(--text-primary);
+}
+
+.activity-bar-icon.active {
+    color: var(--accent);
+}
+
+/* Active indicator bar on left edge */
+.activity-bar-icon.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 0 1px 1px 0;
+}
+
+/* ==========================================
+   SIDE PANEL (220px, toggleable)
+   ========================================== */
+
+.side-panel {
+    width: 260px;
+    background: var(--black-light);
+    border-right: 1px solid var(--glass-border);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.15s ease;
+}
+
+.side-panel.collapsed {
+    width: 0;
+    border-right: none;
+}
+
+.panel-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Critical: display:flex overrides [hidden] attribute - must explicitly hide */
+.panel-content[hidden] {
+    display: none;
+}
+
 
 .sidebar-header {
     display: flex;
@@ -972,9 +1047,8 @@
     font-weight: 600;
     color: var(--white);
     border-bottom: 1px solid var(--glass-border);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 /* Add Task Form */
@@ -1266,7 +1340,7 @@
 
 @media (max-width: 1200px) {
     .workspace-container {
-        grid-template-columns: 200px 1fr 240px;
+        grid-template-columns: 48px 230px 1fr;
     }
 
     .project-media-row {
@@ -1278,20 +1352,29 @@
     /* Mobile workspace layout */
     .workspace-body {
         height: 100vh;
-        height: 100dvh; /* Dynamic viewport height for mobile browsers */
+        height: 100dvh;
+    }
+
+    /* Hide activity bar on mobile - use bottom tab nav instead */
+    .activity-bar {
+        display: none;
+    }
+
+    /* Hide side panel on mobile */
+    .side-panel {
+        display: none;
     }
 
     .workspace-container {
         display: flex;
         flex-direction: column;
+        grid-template-columns: unset;
         height: calc(100vh - 52px - 60px);
         height: calc(100dvh - 52px - 60px);
         overflow: hidden;
     }
 
-    /* All panels are full-screen overlays on mobile */
-    .sidebar-left,
-    .sidebar-right,
+    /* Main content is a full-screen overlay on mobile */
     .main-content {
         position: absolute;
         top: 0;
@@ -1304,21 +1387,25 @@
         transition: opacity 0.2s ease;
     }
 
-    .sidebar-left {
-        border-right: none;
-    }
-
-    .sidebar-right {
-        border-left: none;
-    }
-
     /* Active panel is visible */
-    .sidebar-left.mobile-active,
-    .sidebar-right.mobile-active,
     .main-content.mobile-active {
         opacity: 1;
         pointer-events: auto;
         z-index: 20;
+    }
+
+    /* Mobile panels from side-panel content */
+    .side-panel.mobile-active {
+        display: flex;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        z-index: 20;
+        opacity: 1;
+        pointer-events: auto;
     }
 
     /* Make workspace container relative for absolute positioning */
@@ -1360,7 +1447,7 @@
     }
 
     .mobile-tab.active {
-        color: var(--white);
+        color: var(--accent);
     }
 
     /* Content adjustments for mobile */
@@ -1385,8 +1472,12 @@
         flex-direction: column;
     }
 
-    /* Hide desktop header nav on mobile */
+    /* Hide desktop header nav and cmd-k on mobile */
     .workspace-header .header-nav {
+        display: none;
+    }
+
+    .workspace-header .header-actions {
         display: none;
     }
 
@@ -1416,8 +1507,7 @@
         padding-bottom: 1rem;
     }
 
-    .sidebar-left,
-    .sidebar-right {
+    .side-panel {
         overflow-y: auto;
     }
 }
@@ -1847,8 +1937,8 @@
 
 .progress-tab .tab-name {
     max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .progress-tab .tab-delete {
@@ -2306,9 +2396,8 @@
 .file-name {
     font-size: 0.85rem;
     color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .file-delete-btn {
@@ -2358,9 +2447,8 @@
     font-size: 1rem;
     font-weight: 500;
     color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
     max-width: 60%;
 }
 
@@ -2553,4 +2641,167 @@
     .create-file-body textarea {
         min-height: 150px;
     }
+}
+
+/* ==========================================
+   COMMAND PALETTE
+   ========================================== */
+
+.command-palette {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 20vh;
+}
+
+.command-palette[hidden] {
+    display: none !important;
+}
+
+.command-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.command-dialog {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    background: var(--black-light);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.command-dialog input {
+    width: 100%;
+    padding: 1rem 1.25rem;
+    font-size: 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    outline: none;
+    font-family: var(--font);
+}
+
+.command-dialog input::placeholder {
+    color: var(--text-muted);
+}
+
+.command-results {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.command-results:empty {
+    display: none;
+}
+
+.command-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.command-item:hover,
+.command-item.selected {
+    background: var(--grey-dark);
+}
+
+.command-item-icon {
+    font-size: 0.9rem;
+    color: var(--grey-mid);
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.command-item-label {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.command-item-hint {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.command-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* ==========================================
+   FILES PANEL (Side Panel)
+   ========================================== */
+
+.panel-files-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+.panel-files-no-project {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.panel-files-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+.panel-files-project-name {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--white);
+    border-bottom: 1px solid var(--glass-border);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.panel-files-actions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.panel-files-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.panel-files-list .file-item {
+    padding: 0.5rem 0.75rem;
+}
+
+.panel-files-list .files-empty {
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
 }
