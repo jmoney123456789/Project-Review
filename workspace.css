@@ -2805,3 +2805,182 @@
     color: var(--text-muted);
     font-size: 0.8rem;
 }
+
+/* ==========================================
+   EDIT PROJECT BUTTON & MODAL
+   ========================================== */
+
+.btn-edit-project {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    color: var(--grey-mid);
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.btn-edit-project:hover {
+    background: var(--grey-dark);
+    color: var(--white);
+    border-color: var(--grey-mid);
+}
+
+/* Edit Project Modal Body */
+.edit-project-body {
+    text-align: left;
+    padding: 1.25rem;
+}
+
+.edit-project-body .form-group {
+    margin-bottom: 1rem;
+}
+
+.edit-project-body .form-group:last-of-type {
+    margin-bottom: 1.25rem;
+}
+
+.edit-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.edit-project-body .form-group label .required {
+    color: #ef4444;
+}
+
+/* Modal textarea styling */
+.modal .form-group textarea {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    resize: vertical;
+    min-height: 60px;
+}
+
+.modal .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal .form-group textarea::placeholder {
+    color: var(--text-muted);
+}
+
+/* Modal URL input */
+.modal .form-group input[type="url"] {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+}
+
+.modal .form-group input[type="url"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal .form-group input[type="url"]::placeholder {
+    color: var(--text-muted);
+}
+
+/* Name change warning banner */
+.edit-name-warning {
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: var(--radius-sm);
+    color: #fbbf24;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.edit-name-warning[hidden] {
+    display: none;
+}
+
+/* Tag chips in edit modal */
+.edit-tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+    min-height: 24px;
+}
+
+.edit-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-input);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.edit-tag-remove {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: var(--transition);
+    line-height: 1;
+}
+
+.edit-tag-remove:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.edit-tag-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+}
+
+.edit-tag-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.edit-tag-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Responsive for edit modal */
+@media (max-width: 600px) {
+    .edit-form-row {
+        grid-template-columns: 1fr;
+    }
+}

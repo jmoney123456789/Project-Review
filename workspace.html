@@ -198,6 +198,7 @@
                     <div class="pv-title-row">
                         <h1 id="pvProjectName">Project Name</h1>
                         <span class="pv-type" id="pvProjectType">Type</span>
+                        <button class="btn-edit-project" id="editProjectBtn" title="Edit Project">&#9998;</button>
                     </div>
                     <div class="pv-status-row">
                         <label for="pvStatusSelect">Status:</label>
@@ -573,6 +574,118 @@
                 <div class="modal-actions">
                     <button class="btn-cancel" id="deleteImageCancelBtn">Cancel</button>
                     <button class="btn-delete" id="deleteImageConfirmBtn">Delete Screenshot</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Project Modal -->
+    <div class="modal" id="editProjectModal" hidden>
+        <div class="modal-backdrop" id="editProjectModalBackdrop"></div>
+        <div class="modal-content modal-medium">
+            <div class="modal-header">
+                <h2>Edit Project</h2>
+                <button class="modal-close" id="editProjectModalClose">&times;</button>
+            </div>
+            <div class="modal-body edit-project-body">
+                <!-- Name change warning -->
+                <div class="edit-name-warning" id="editNameWarning" hidden>
+                    Changing the project name will migrate all associated data (tasks, notes, progress tabs, files, feedback) to the new name.
+                </div>
+
+                <div class="form-group">
+                    <label for="editProjectName">Project Name <span class="required">*</span></label>
+                    <input type="text" id="editProjectName" placeholder="Project name" maxlength="100">
+                </div>
+
+                <div class="edit-form-row">
+                    <div class="form-group">
+                        <label for="editProjectType">Project Type <span class="required">*</span></label>
+                        <select id="editProjectType">
+                            <option value="">Select a type...</option>
+                            <optgroup label="Trading Systems">
+                                <option value="Backtest Idea">Backtest Idea</option>
+                                <option value="Execution Plan">Execution Plan</option>
+                                <option value="Risk Management">Risk Management</option>
+                                <option value="Strategy Tool">Strategy Tool</option>
+                                <option value="Indicator">Indicator</option>
+                                <option value="Alert System">Alert System</option>
+                                <option value="Scanner">Scanner</option>
+                                <option value="Journal/Tracker">Journal/Tracker</option>
+                            </optgroup>
+                            <optgroup label="Psychology & Process">
+                                <option value="Trading Routine">Trading Routine</option>
+                                <option value="Mental Framework">Mental Framework</option>
+                                <option value="Discipline System">Discipline System</option>
+                                <option value="Emotion Management">Emotion Management</option>
+                                <option value="Performance Review">Performance Review</option>
+                                <option value="Habit Tracker">Habit Tracker</option>
+                            </optgroup>
+                            <optgroup label="Technical">
+                                <option value="App">App</option>
+                                <option value="Script/Automation">Script/Automation</option>
+                                <option value="Dashboard">Dashboard</option>
+                                <option value="API Integration">API Integration</option>
+                            </optgroup>
+                            <optgroup label="Other">
+                                <option value="Research">Research</option>
+                                <option value="Documentation">Documentation</option>
+                                <option value="Other">Other</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editProjectCreator">Created by <span class="required">*</span></label>
+                        <select id="editProjectCreator">
+                            <option value="Jason">Jason</option>
+                            <option value="Ash">Ash</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="edit-form-row">
+                    <div class="form-group">
+                        <label for="editCurrentState">Current State</label>
+                        <select id="editCurrentState">
+                            <option value="Just an idea">Just an idea</option>
+                            <option value="Rough sketch/notes">Rough sketch/notes</option>
+                            <option value="Partial prototype">Partial prototype</option>
+                            <option value="Working version">Working version</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editProjectLink">Link</label>
+                        <input type="url" id="editProjectLink" placeholder="https://...">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Tags</label>
+                    <div class="edit-tags-container" id="editTagsContainer">
+                        <!-- Tag chips rendered dynamically -->
+                    </div>
+                    <input type="text" id="editTagInput" class="edit-tag-input" placeholder="Type a tag and press Enter">
+                </div>
+
+                <div class="form-group">
+                    <label for="editSummary">Summary <span class="required">*</span></label>
+                    <input type="text" id="editSummary" placeholder="Brief project summary" maxlength="150">
+                    <span class="field-hint"><span id="editSummaryCount">0</span>/150</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="editProblem">Main Concept</label>
+                    <textarea id="editProblem" placeholder="What problem does this solve?" rows="3"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="editSuccess">Project Goal</label>
+                    <textarea id="editSuccess" placeholder="What does success look like?" rows="3"></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn-cancel" id="editProjectCancelBtn">Cancel</button>
+                    <button class="btn-save" id="editProjectSaveBtn">Save Changes</button>
                 </div>
             </div>
         </div>

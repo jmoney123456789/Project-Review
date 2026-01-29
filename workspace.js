@@ -14,6 +14,8 @@ window.resetAndResync = async function() {
     localStorage.removeItem('projectCacheTimestamp');
     localStorage.removeItem('projectTasks');
     localStorage.removeItem('projectNotes');
+    localStorage.removeItem('projectProgressTabs');
+    localStorage.removeItem('projectFiles');
     localStorage.removeItem('projectChangesLog');
     localStorage.removeItem('completedProjects');
     console.log('Local data cleared. Refreshing page...');
@@ -37,6 +39,7 @@ let currentProgressImageIndex = 0;
 let projectToDelete = null;
 let dataLoaded = false;
 let progressFieldsDebounceTimer = null;
+let isSyncingProgressTabs = false; // Guard against real-time listener overwriting in-flight writes
 
 // Filter state for categories/tags
 let statusFilter = 'all'; // 'all', 'in_progress', 'completed', 'archived'
@@ -158,6 +161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadAllData();
     setupEventListeners();
     setupDeleteModal();
+    setupEditModal(); // Edit project modal
     setupFirebaseListeners(); // Real-time sync - no refresh needed!
     setupActivityBar(); // Activity bar panel toggling
     setupCommandPalette(); // Cmd+K command palette
@@ -551,7 +555,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
         const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
         const projectName = project ? project.projectName : key;
         if (tasksObj[key] && tasksObj[key].tasks) {
-            allTasks[projectName] = tasksObj[key].tasks;
+            allTasks[projectName] = ensureArray(tasksObj[key].tasks);
         }
     });
     safeSetLocalStorage('projectTasks', allTasks);
@@ -576,7 +580,8 @@ async function fetchFromFirebaseAsSourceOfTruth() {
         const projectName = project ? project.projectName : key;
         const tabsData = progressTabsObj[key];
         if (tabsData && tabsData.tabs) {
-            allProgressTabs[projectName] = tabsData.tabs;
+            // Firebase may convert arrays to objects - ensure we always have an array
+            allProgressTabs[projectName] = ensureArray(tabsData.tabs);
         }
     });
     safeSetLocalStorage('projectProgressTabs', allProgressTabs);
@@ -589,7 +594,7 @@ async function fetchFromFirebaseAsSourceOfTruth() {
         const projectName = project ? project.projectName : key;
         const filesData = projectFilesObj[key];
         if (filesData && filesData.files) {
-            allProjectFiles[projectName] = filesData.files;
+            allProjectFiles[projectName] = ensureArray(filesData.files);
         }
     });
     safeSetLocalStorage('projectFiles', allProjectFiles);
@@ -691,7 +696,7 @@ function setupFirebaseListeners() {
             const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
             const projectName = project ? project.projectName : key;
             if (tasksObj[key] && tasksObj[key].tasks) {
-                allTasks[projectName] = tasksObj[key].tasks;
+                allTasks[projectName] = ensureArray(tasksObj[key].tasks);
             }
         });
 
@@ -738,6 +743,9 @@ function setupFirebaseListeners() {
     progressTabsListener = database.ref('progressTabs').on('value', (snapshot) => {
         if (!dataLoaded) return; // Skip initial load
 
+        // Skip real-time updates while we're actively syncing to prevent overwriting in-flight data
+        if (isSyncingProgressTabs) return;
+
         const progressTabsObj = snapshot.val() || {};
 
         // Convert from {projectKey: {tabs: [...]}} to {projectName: [...]}
@@ -747,7 +755,8 @@ function setupFirebaseListeners() {
             const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
             const projectName = project ? project.projectName : key;
             if (progressTabsObj[key] && progressTabsObj[key].tabs) {
-                allProgressTabs[projectName] = progressTabsObj[key].tabs;
+                // Firebase may convert arrays to objects - ensure we always have an array
+                allProgressTabs[projectName] = ensureArray(progressTabsObj[key].tabs);
             }
         });
 
@@ -765,7 +774,7 @@ function setupFirebaseListeners() {
                 if (tabs[currentTabIndex - 1]) {
                     populateProgressTab(tabs[currentTabIndex - 1], true); // preserveIndex = true
                 } else {
-                    // Tab was deleted, switch to Overview
+                    // Tab was deleted or index out of bounds, switch to Overview
                     switchProgressTab(0);
                 }
             }
@@ -785,7 +794,7 @@ function setupFirebaseListeners() {
             const project = allProjects.find(p => sanitizeFirebaseKey(p.projectName) === key);
             const projectName = project ? project.projectName : key;
             if (projectFilesObj[key] && projectFilesObj[key].files) {
-                allProjectFiles[projectName] = projectFilesObj[key].files;
+                allProjectFiles[projectName] = ensureArray(projectFilesObj[key].files);
             }
         });
 
@@ -1057,6 +1066,7 @@ async function deleteNotesFromFirebase(projectName) {
 
 // Sync progress tabs for a project to Firebase
 async function syncProgressTabsToFirebase(projectName, tabs) {
+    isSyncingProgressTabs = true;
     try {
         const key = sanitizeFirebaseKey(projectName);
         await database.ref(`progressTabs/${key}`).set({
@@ -1066,6 +1076,9 @@ async function syncProgressTabsToFirebase(projectName, tabs) {
         console.log('Synced progress tabs to Firebase for:', projectName);
     } catch (error) {
         console.error('Firebase progress tabs sync error:', error);
+    } finally {
+        // Small delay before re-enabling listener to let Firebase echo settle
+        setTimeout(() => { isSyncingProgressTabs = false; }, 500);
     }
 }
 
@@ -1102,10 +1115,17 @@ async function deleteProgressTabsFromFirebase(projectName) {
     }
 }
 
-// Get progress tabs for current project
+// Get progress tabs for current project (always returns a proper array)
 function getProjectProgressTabs() {
     if (!currentProject) return [];
-    return allProgressTabs[currentProject.projectName] || [];
+    const tabs = allProgressTabs[currentProject.projectName];
+    if (!tabs) return [];
+    // Defensive: ensure it's always an array even if localStorage had bad data
+    if (!Array.isArray(tabs)) {
+        allProgressTabs[currentProject.projectName] = ensureArray(tabs);
+        return allProgressTabs[currentProject.projectName];
+    }
+    return tabs;
 }
 
 // Get total image count across overview and all progress tabs
@@ -1161,6 +1181,15 @@ function sanitizeFirebaseKey(key) {
 // Generate unique ID
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
+// Firebase can convert arrays to objects (e.g. {0: item, 1: item}).
+// This ensures we always get a proper array back.
+function ensureArray(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (typeof data === 'object') return Object.values(data);
+    return [];
 }
 
 // Force refresh from Firebase (user-initiated via Refresh button)
@@ -1265,6 +1294,12 @@ function setupEventListeners() {
 
         // Handle ESC for modals
         if (e.key === 'Escape') {
+            const editProjectModal = document.getElementById('editProjectModal');
+            if (editProjectModal && !editProjectModal.hidden) {
+                hideEditModal();
+                return;
+            }
+
             const addTabModal = document.getElementById('addTabModal');
             const deleteTabModal = document.getElementById('deleteTabModal');
             const fileViewerModal = document.getElementById('fileViewerModal');
@@ -2587,10 +2622,16 @@ function renderProgressTabs() {
 
 // Switch between Overview and progress tabs
 function switchProgressTab(index) {
-    currentTabIndex = index;
-
     const overviewContent = document.getElementById('tabContentOverview');
     const progressContent = document.getElementById('tabContentProgress');
+
+    // Bounds check: if index is out of range, fall back to Overview
+    const tabs = getProjectProgressTabs();
+    if (index > 0 && index - 1 >= tabs.length) {
+        index = 0;
+    }
+
+    currentTabIndex = index;
 
     if (index === 0) {
         // Show Overview
@@ -2601,16 +2642,20 @@ function switchProgressTab(index) {
         if (overviewContent) overviewContent.hidden = true;
         if (progressContent) progressContent.hidden = false;
 
-        const tabs = getProjectProgressTabs();
         const tab = tabs[index - 1];
         if (tab) {
             populateProgressTab(tab);
+        } else {
+            // Tab doesn't exist at this index, fall back to Overview
+            currentTabIndex = 0;
+            if (overviewContent) overviewContent.hidden = false;
+            if (progressContent) progressContent.hidden = true;
         }
     }
 
     // Update active tab in UI
     document.querySelectorAll('.progress-tab').forEach((btn, i) => {
-        btn.classList.toggle('active', parseInt(btn.dataset.tabIndex) === index);
+        btn.classList.toggle('active', parseInt(btn.dataset.tabIndex) === currentTabIndex);
     });
 }
 
@@ -2630,8 +2675,10 @@ function populateProgressTab(tab, preserveIndex = false) {
         if (linkedTaskContainer) linkedTaskContainer.hidden = true;
     }
 
-    // Setup gallery
-    setupProgressGallery(tab.images || [], preserveIndex);
+    // Setup gallery (ensure images is always an array - Firebase may convert it)
+    const images = ensureArray(tab.images);
+    tab.images = images;
+    setupProgressGallery(images, preserveIndex);
 
     // Update image count
     updateProgressImageCount(tab);
@@ -3079,16 +3126,23 @@ async function confirmDeleteProgressTab() {
     const user = getCurrentUser();
     logChange(currentProject.projectName, user, 'deleted', `Deleted progress tab "${deletedTab.tabName}"`);
 
-    // If we were on this tab, switch to Overview
-    if (currentTabIndex === tabIndex + 1) {
-        switchProgressTab(0);
-    } else if (currentTabIndex > tabIndex + 1) {
-        // Adjust current tab index
+    // Adjust currentTabIndex after deletion
+    const deletedDisplayIndex = tabIndex + 1; // +1 because Overview is index 0
+    if (currentTabIndex === deletedDisplayIndex) {
+        // We were on the deleted tab - switch to Overview
+        currentTabIndex = 0;
+    } else if (currentTabIndex > deletedDisplayIndex) {
+        // We were on a tab after the deleted one - shift index down
         currentTabIndex--;
     }
+    // If currentTabIndex is now out of bounds, reset to Overview
+    if (currentTabIndex > tabs.length) {
+        currentTabIndex = 0;
+    }
 
-    // Render tabs
+    // Render tabs first, then switch to correct tab
     renderProgressTabs();
+    switchProgressTab(currentTabIndex);
 
     // Hide modal
     hideDeleteTabModal();
@@ -3827,4 +3881,429 @@ function loadProgressImageNote() {
 
     const imgData = getImageData(tab.images, currentProgressImageIndex);
     noteInput.value = imgData.note || '';
+}
+
+// ==========================================
+// Edit Project Modal
+// ==========================================
+
+let editModalOriginalName = '';
+let editModalTags = [];
+
+function setupEditModal() {
+    const modal = document.getElementById('editProjectModal');
+    if (!modal) return;
+
+    // Edit button in project header
+    document.getElementById('editProjectBtn')?.addEventListener('click', showEditModal);
+
+    // Close handlers
+    document.getElementById('editProjectModalBackdrop')?.addEventListener('click', hideEditModal);
+    document.getElementById('editProjectModalClose')?.addEventListener('click', hideEditModal);
+    document.getElementById('editProjectCancelBtn')?.addEventListener('click', hideEditModal);
+    document.getElementById('editProjectSaveBtn')?.addEventListener('click', saveProjectEdits);
+
+    // Tag input - Enter to add
+    document.getElementById('editTagInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const input = e.target;
+            const tagText = input.value.trim();
+            if (tagText) {
+                addEditTag(tagText);
+                input.value = '';
+            }
+        }
+    });
+
+    // Tag chip removal (delegated)
+    document.getElementById('editTagsContainer')?.addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('.edit-tag-remove');
+        if (removeBtn) {
+            const index = parseInt(removeBtn.dataset.index, 10);
+            removeEditTag(index);
+        }
+    });
+
+    // Summary char counter
+    document.getElementById('editSummary')?.addEventListener('input', (e) => {
+        const countEl = document.getElementById('editSummaryCount');
+        if (countEl) countEl.textContent = e.target.value.length;
+    });
+
+    // Name change detection
+    document.getElementById('editProjectName')?.addEventListener('input', (e) => {
+        const warning = document.getElementById('editNameWarning');
+        if (warning) {
+            warning.hidden = (e.target.value.trim() === editModalOriginalName);
+        }
+    });
+}
+
+function showEditModal() {
+    if (!currentProject) return;
+
+    const modal = document.getElementById('editProjectModal');
+    if (!modal) return;
+
+    editModalOriginalName = currentProject.projectName;
+    editModalTags = [...(currentProject.tags || [])];
+
+    // Pre-fill fields
+    document.getElementById('editProjectName').value = currentProject.projectName;
+    document.getElementById('editProjectType').value = currentProject.projectType || '';
+    document.getElementById('editProjectCreator').value = currentProject.creator || 'Jason';
+    document.getElementById('editCurrentState').value = currentProject.currentState || 'Just an idea';
+    document.getElementById('editProjectLink').value = currentProject.link || '';
+    document.getElementById('editSummary').value = currentProject.summary || '';
+    document.getElementById('editProblem').value = currentProject.problem || '';
+    document.getElementById('editSuccess').value = currentProject.success || '';
+
+    // Update char counter
+    const countEl = document.getElementById('editSummaryCount');
+    if (countEl) countEl.textContent = (currentProject.summary || '').length;
+
+    // Render tag chips
+    renderEditTagChips();
+
+    // Hide name warning
+    const warning = document.getElementById('editNameWarning');
+    if (warning) warning.hidden = true;
+
+    modal.hidden = false;
+}
+
+function hideEditModal() {
+    const modal = document.getElementById('editProjectModal');
+    if (modal) modal.hidden = true;
+    editModalOriginalName = '';
+    editModalTags = [];
+}
+
+function renderEditTagChips() {
+    const container = document.getElementById('editTagsContainer');
+    if (!container) return;
+
+    if (editModalTags.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = editModalTags.map((tag, i) =>
+        `<span class="edit-tag-chip">${escapeHtml(tag)}<button class="edit-tag-remove" data-index="${i}" title="Remove tag">&times;</button></span>`
+    ).join('');
+}
+
+function addEditTag(tagText) {
+    const normalized = tagText.trim();
+    if (!normalized) return;
+    // Prevent duplicates (case-insensitive)
+    if (editModalTags.some(t => t.toLowerCase() === normalized.toLowerCase())) return;
+    editModalTags.push(normalized);
+    renderEditTagChips();
+}
+
+function removeEditTag(index) {
+    if (index >= 0 && index < editModalTags.length) {
+        editModalTags.splice(index, 1);
+        renderEditTagChips();
+    }
+}
+
+async function saveProjectEdits() {
+    if (!currentProject) return;
+
+    const newName = document.getElementById('editProjectName').value.trim();
+    const newType = document.getElementById('editProjectType').value;
+    const newCreator = document.getElementById('editProjectCreator').value;
+    const newCurrentState = document.getElementById('editCurrentState').value;
+    const newLink = document.getElementById('editProjectLink').value.trim();
+    const newSummary = document.getElementById('editSummary').value.trim();
+    const newProblem = document.getElementById('editProblem').value.trim();
+    const newSuccess = document.getElementById('editSuccess').value.trim();
+    const newTags = [...editModalTags];
+
+    // Validate required fields
+    if (!newName) {
+        alert('Project name is required.');
+        return;
+    }
+    if (!newType) {
+        alert('Project type is required.');
+        return;
+    }
+    if (!newCreator) {
+        alert('Creator is required.');
+        return;
+    }
+    if (!newSummary) {
+        alert('Summary is required.');
+        return;
+    }
+
+    const oldName = editModalOriginalName;
+    const nameChanged = newName !== oldName;
+
+    // Check for duplicate name
+    if (nameChanged) {
+        const duplicate = allProjects.find(p =>
+            p.projectName.toLowerCase() === newName.toLowerCase() && p.projectName !== oldName
+        );
+        if (duplicate) {
+            alert(`A project named "${duplicate.projectName}" already exists.`);
+            return;
+        }
+        // Also check sanitized Firebase key collision
+        const newKey = sanitizeFirebaseKey(newName);
+        const oldKey = sanitizeFirebaseKey(oldName);
+        if (newKey !== oldKey) {
+            const keyCollision = allProjects.find(p =>
+                sanitizeFirebaseKey(p.projectName) === newKey && p.projectName !== oldName
+            );
+            if (keyCollision) {
+                alert(`Cannot rename: the Firebase key for "${newName}" would conflict with "${keyCollision.projectName}".`);
+                return;
+            }
+        }
+    }
+
+    // Build the updated project
+    const now = new Date().toISOString();
+    const updatedProject = {
+        ...currentProject,
+        projectName: newName,
+        projectType: newType,
+        creator: newCreator,
+        currentState: newCurrentState,
+        link: newLink,
+        summary: newSummary,
+        problem: newProblem,
+        success: newSuccess,
+        tags: newTags,
+        _lastModified: now,
+        _version: (currentProject._version || 0) + 1
+    };
+
+    // Detect what changed for the changes log
+    const changes = [];
+    if (nameChanged) changes.push(`Renamed project from "${oldName}" to "${newName}"`);
+    if (newType !== currentProject.projectType) changes.push(`Changed type to ${newType}`);
+    if (newCreator !== (currentProject.creator || 'Jason')) changes.push(`Changed creator to ${newCreator}`);
+    if (newCurrentState !== (currentProject.currentState || 'Just an idea')) changes.push(`Changed current state to ${newCurrentState}`);
+    if (newLink !== (currentProject.link || '')) changes.push(newLink ? `Updated link` : `Removed link`);
+    if (newSummary !== (currentProject.summary || '')) changes.push(`Updated summary`);
+    if (newProblem !== (currentProject.problem || '')) changes.push(`Updated main concept`);
+    if (newSuccess !== (currentProject.success || '')) changes.push(`Updated project goal`);
+    if (JSON.stringify(newTags) !== JSON.stringify(currentProject.tags || [])) changes.push(`Updated tags`);
+
+    if (changes.length === 0) {
+        hideEditModal();
+        return;
+    }
+
+    const user = getCurrentUser();
+
+    if (nameChanged) {
+        try {
+            await migrateProjectName(oldName, newName, updatedProject);
+        } catch (error) {
+            console.error('Migration failed:', error);
+            alert('Failed to rename project. Please try again.');
+            return;
+        }
+    } else {
+        // Update in place
+        allProjects = allProjects.map(p =>
+            p.projectName === oldName ? updatedProject : p
+        );
+        currentProject = updatedProject;
+
+        // Save to localStorage
+        safeSetLocalStorage('projectReviewData', getCombinedForCache());
+
+        // Sync to Firebase
+        syncProjectToFirebase(updatedProject);
+    }
+
+    // Log changes
+    const targetName = newName; // Log under new name
+    changes.forEach(desc => {
+        logChange(targetName, user, 'updated', desc);
+    });
+
+    // Re-render
+    renderProjectList();
+    populateProjectView(currentProject);
+    renderChangesLog();
+
+    hideEditModal();
+}
+
+async function migrateProjectName(oldName, newName, updatedProject) {
+    const oldKey = sanitizeFirebaseKey(oldName);
+    const newKey = sanitizeFirebaseKey(newName);
+
+    console.log(`Migrating project: "${oldName}" → "${newName}" (key: ${oldKey} → ${newKey})`);
+
+    // 1. Read all existing data from Firebase under old keys
+    let tasksData = null;
+    let notesData = null;
+    let progressTabsData = null;
+    let projectFilesData = null;
+
+    try {
+        const [tasksSnap, notesSnap, tabsSnap, filesSnap] = await Promise.all([
+            database.ref(`tasks/${oldKey}`).once('value'),
+            database.ref(`notes/${oldKey}`).once('value'),
+            database.ref(`progressTabs/${oldKey}`).once('value'),
+            database.ref(`projectFiles/${oldKey}`).once('value')
+        ]);
+        tasksData = tasksSnap.val();
+        notesData = notesSnap.val();
+        progressTabsData = tabsSnap.val();
+        projectFilesData = filesSnap.val();
+    } catch (error) {
+        console.error('Error reading old data:', error);
+        throw error;
+    }
+
+    // 2. Write all data under new keys and the updated project
+    try {
+        const writes = {};
+        // Write updated project
+        writes[`projects/${newKey}`] = {
+            ...updatedProject,
+            id: updatedProject.id || generateId(),
+            _lastModified: new Date().toISOString()
+        };
+        // Copy tasks
+        if (tasksData) {
+            writes[`tasks/${newKey}`] = tasksData;
+        }
+        // Copy notes
+        if (notesData) {
+            writes[`notes/${newKey}`] = notesData;
+        }
+        // Copy progress tabs
+        if (progressTabsData) {
+            writes[`progressTabs/${newKey}`] = progressTabsData;
+        }
+        // Copy project files
+        if (projectFilesData) {
+            writes[`projectFiles/${newKey}`] = projectFilesData;
+        }
+
+        await database.ref().update(writes);
+        console.log('Wrote all data under new keys');
+    } catch (error) {
+        console.error('Error writing new data:', error);
+        throw error;
+    }
+
+    // 3. Update feedback entries that reference oldName
+    try {
+        const feedbackSnap = await database.ref('feedback').once('value');
+        const feedbackObj = feedbackSnap.val() || {};
+        const feedbackUpdates = {};
+
+        Object.keys(feedbackObj).forEach(key => {
+            if (feedbackObj[key].projectName === oldName) {
+                feedbackUpdates[`feedback/${key}/projectName`] = newName;
+            }
+        });
+
+        if (Object.keys(feedbackUpdates).length > 0) {
+            await database.ref().update(feedbackUpdates);
+            console.log('Updated feedback references');
+        }
+    } catch (error) {
+        console.error('Error updating feedback references:', error);
+        // Non-critical - continue
+    }
+
+    // 4. Delete old keys (only if key actually changed)
+    if (oldKey !== newKey) {
+        try {
+            const deletes = {};
+            deletes[`projects/${oldKey}`] = null;
+            deletes[`tasks/${oldKey}`] = null;
+            deletes[`notes/${oldKey}`] = null;
+            deletes[`progressTabs/${oldKey}`] = null;
+            deletes[`projectFiles/${oldKey}`] = null;
+            await database.ref().update(deletes);
+            console.log('Deleted old Firebase keys');
+        } catch (error) {
+            console.error('Error deleting old keys:', error);
+            // Non-critical - old data will just be orphaned
+        }
+    }
+
+    // 5. Update in-memory state
+    allProjects = allProjects.map(p =>
+        p.projectName === oldName ? updatedProject : p
+    );
+
+    // Migrate tasks
+    if (allTasks[oldName]) {
+        allTasks[newName] = allTasks[oldName];
+        delete allTasks[oldName];
+    }
+
+    // Migrate notes
+    if (allNotes[oldName]) {
+        allNotes[newName] = allNotes[oldName];
+        delete allNotes[oldName];
+    }
+
+    // Migrate progress tabs
+    if (allProgressTabs[oldName]) {
+        allProgressTabs[newName] = allProgressTabs[oldName];
+        delete allProgressTabs[oldName];
+    }
+
+    // Migrate project files
+    if (allProjectFiles[oldName]) {
+        allProjectFiles[newName] = allProjectFiles[oldName];
+        delete allProjectFiles[oldName];
+    }
+
+    // Migrate changes log
+    if (allChangesLog[oldName]) {
+        allChangesLog[newName] = allChangesLog[oldName];
+        delete allChangesLog[oldName];
+    }
+
+    // Migrate feedback in memory
+    allFeedback = allFeedback.map(f =>
+        f.projectName === oldName ? { ...f, projectName: newName } : f
+    );
+
+    // 6. Update image cache
+    const imageCache = getImageCache();
+    if (imageCache[oldName]) {
+        imageCache[newName] = imageCache[oldName];
+        delete imageCache[oldName];
+        saveImageCache(imageCache);
+    }
+
+    // Update completed projects tracking
+    const completedProjects = JSON.parse(localStorage.getItem('completedProjects') || '{}');
+    if (completedProjects[oldName]) {
+        completedProjects[newName] = completedProjects[oldName];
+        delete completedProjects[oldName];
+        localStorage.setItem('completedProjects', JSON.stringify(completedProjects));
+    }
+
+    // 7. Save all updated localStorage caches
+    safeSetLocalStorage('projectReviewData', getCombinedForCache());
+    safeSetLocalStorage('projectTasks', allTasks);
+    safeSetLocalStorage('projectNotes', allNotes);
+    safeSetLocalStorage('projectProgressTabs', allProgressTabs);
+    safeSetLocalStorage('projectFiles', allProjectFiles);
+    saveChangesLog();
+
+    // 8. Update currentProject reference
+    currentProject = updatedProject;
+
+    console.log(`Migration complete: "${oldName}" → "${newName}"`);
 }
